@@ -1,32 +1,56 @@
-# 🦕 DinoDocket
+<p align="center">
+  <img src="public/logo.png" alt="DinoDocket logo" width="180" />
+</p>
 
-Your personal chief of staff for the semester. An AI scheduler for overcommitted college students, plus a team of AI agents that keeps making the scheduler better.
+<h1 align="center">DinoDocket</h1>
 
-Built at **c0mpiled-15 (Penn State, Oct 11 2026)**. Track 1, Challenge A: *Build a Self-Improving Agent Team* (Luminal).
+<p align="center"><b>Plans that fit your real week.</b><br/>
+An AI planner that checks whether your week actually fits, plans <i>how</i> to do things, and never changes your calendar without your approval.<br/>
+Behind it, a team of AI agents keeps making the scheduler better.</p>
 
-## What it does
+<p align="center">
+  <a href="https://dinodocket.vercel.app">Live demo</a> ·
+  Built at <b>c0mpiled-15, Penn State (Oct 11, 2026)</b> ·
+  Track 1 (Challenge A: Self-Improving Agent Team) · Best Use of MongoDB
+</p>
 
-**Planner (`/`)**
-- Weekly calendar with locked commitments (classes, shifts, clubs) and flexible work sessions.
-- Tell the assistant what changed ("I have a CMPSC 311 lab report due Wednesday, about 4 hours", "I'm busy Tue 6pm-9pm").
-- The AI never edits the calendar. It returns one structured action, the server validates it, the engine builds a plan, and you **approve or reject** the proposal.
-- When the week does not fit, it says so honestly: "Needs 30h, but only 25.5h of awake time is free before Wed 10:00 AM."
+---
 
-**Agent Lab (`/lab`)**: the self-improving agent team
+## The problem
+
+Google Calendar shows when you're free. It doesn't tell you whether everything you owe this week actually **fits** in that free time. The essay, the problem set, and the midterm prep live in your head, not on the calendar, so the overload shows up on Wednesday night instead of Sunday.
+
+## What DinoDocket does
+
+### Planner (`/`)
+- **Does my week fit?** Classes, shifts and meetings are locked. Dino places study work in the gaps, respects your daily limit and breaks, and says plainly when something can't fit: *"Needs 30h, but only 25.5h of awake time is free before Wed 10:00 AM."*
+- **Chat to change things.** "Lab report due Wednesday, about 4 hours." "I'm busy Tue 6 to 9pm." "Put THON committee in a THON group." The AI turns each message into one structured action; the server validates it; the engine re-plans; **you approve or reject**.
+- **Plans how, not just when.** "I want to practice making croissants" becomes a step-by-step plan spread across the week. Click any block to see that session's steps with YouTube and web search links (search links, so they always resolve to real results).
+- **Dino noticed.** Proactive catches before they bite: a meeting with **no link or location** (with a drafted message asking for it), **double-booked** commitments (with a reschedule draft), important work finishing hours before its deadline, big tasks with no steps, days over your limit.
+- **Edit like a normal calendar.** Click an empty slot to add an event, click any block to edit time, link, location, group or color.
+- **Where your week goes.** Custom groups (School, Work, THON, anything) and a whole-week bar showing each group's share of your awake time and what's left free.
+- **Personalized from sign-up.** Onboarding answers (wake and sleep, focus hours, session length, daily limit, work style, goals) set the engine's profile and are passed to Dino.
+- **Synced to MongoDB Atlas.** No login needed: each browser gets a private plan id; "Open on another device" copies a link that opens the same plan on your phone.
+
+### Agent Lab (`/lab`): the self-improving agent team
 1. **Baseline:** earliest-deadline-first greedy (first free slot, 1h chunks, no daily limit, no breaks).
-2. **Each round,** 4 agents run in parallel on Luminal (DeepSeek / GLM flash):
-   - *Deadline Guardian* protects completion and deadline buffer
-   - *Wellbeing Advocate* targets livable days, breaks, focus hours
-   - *Explorer* makes structurally different moves
-   - *Refiner* makes small fixes to the current best
-   
-   Each agent sees the top strategies, their score breakdowns, the worst-scoring student weeks, and last round's attempts, then proposes a new strategy (JSON).
-3. **Evaluation:** every proposal is run through the real scheduling engine on **30 synthetic student weeks** and scored.
-4. **Fresh test:** the final best strategy is scored on **15 held-out weeks** the agents never saw.
+2. **Each round, 4 agents** on Luminal (`deepseek-ai/DeepSeek-V4.1-Flash`) read the top strategies, their score breakdowns, the **worst-scoring weeks**, and last round's attempts, then each propose a new strategy:
+   - *Deadline Guardian*: completion and deadline buffer
+   - *Wellbeing Advocate*: livable days, breaks, focus hours
+   - *Explorer*: structurally different moves
+   - *Refiner*: targeted fixes to the current best
+3. **Evaluation:** every proposal runs through the real scheduling engine on **30 synthetic student weeks**.
+4. **Held-out test:** the final strategy is scored on **15 weeks the agents never saw**.
+5. **"Just me" mode:** every training and test week takes on *your* sign-up rhythm, and the agents are told your habits, so they tune the planner to you. "Use best strategy in Planner" applies it.
+6. Every run is stored in **MongoDB Atlas** and listed under *Past runs*.
+
+**Example run (LLM agents, 4 rounds):** held-out score **69.9 → 77.1 (+10.3%)**, 100% valid schedules, best strategy proposed by the LLM *Refiner*. Its reasoning, verbatim from the run log:
+
+> Targeting the completion losses on overloaded weeks (seeds 9/10/26), I sharpen deadline-driven ordering (higher urgency and slack, more negative size) and slightly raise the pass-1 daily cap to fit more required work, while increasing adjacency penalty to preserve breaks.
 
 ## Scoring (0 to 100 per student week)
 
-Hard constraints (no overlaps, locked events untouched, inside awake hours, before deadlines, no over-scheduling) are checked by an independent validator. Any violation scores **0**.
+Hard constraints (no overlaps with commitments, inside awake hours, before deadlines, no over-scheduling) are checked by an **independent validator**. Any violation scores **0**.
 
 ```
 score = 50·completion + completion · (15·focusFit + 15·livable + 10·breaks + 10·buffer)
@@ -35,40 +59,48 @@ score = 50·completion + completion · (15·focusFit + 15·livable + 10·breaks 
 | Component | Meaning |
 |---|---|
 | completion | importance-weighted share of required work that got scheduled |
-| focusFit | share of work inside the student's preferred focus hours |
+| focusFit | share of work inside the student's focus hours |
 | livable | how well daily work stays under the student's own daily limit |
 | breaks | share of sessions with breathing room before and after |
 | buffer | share of essential/high work finished ≥ 24h before the deadline |
 
-**Why quality is multiplied by completion:** in an early run, the agents discovered they could raise "livable" and "breaks" to 100% by simply not scheduling work (completion fell from 95% to 63%). That is reward hacking. Scaling quality by completion removes the exploit, so improvements now come from smarter placement, not from dropping homework.
+**We caught reward hacking.** In an early run the agents raised "livable" and "breaks" to 100% by simply **not scheduling homework** (completion fell from 95% to 63%). Multiplying quality by completion removed the exploit, so gains now come from smarter placement, not from dropping work.
 
 ## Architecture
 
 ```
-Chat message ──▶ LLM interpreter ──▶ structured action ──▶ server validation
-                                                              │
-Strategy (tuned by Agent Lab) ──────────────────────▶ scheduling engine ──▶ validator ──▶ proposal ──▶ user approves
+chat message ─▶ LLM interpreter ─▶ one structured action ─▶ server validation ─┐
+                                                                               ▼
+strategy (tuned in Agent Lab) ──────────────────────────────▶ scheduling engine ─▶ validator ─▶ proposal ─▶ you approve
+                                                                               │
+                                                                     MongoDB Atlas (plans, runs)
 ```
 
-- `src/lib/engine/` pure TypeScript: instance generator (seeded), greedy constructive scheduler controlled by a strategy "genome", independent validator, scorer.
-- `src/lib/agents.ts` agent personas, prompts, parallel proposal + evaluation.
-- `src/lib/interpret.ts` natural language → validated action (LLM, with a rule-based fallback).
-- `src/app/api/*` route handlers. The client orchestrates rounds so each serverless call stays short.
-- Optional MongoDB Atlas stores every lab run (`/api/lab/runs`).
+- `src/lib/engine/`: pure TypeScript. Seeded week generator, greedy constructive scheduler driven by a strategy "genome", independent validator, scorer.
+- `src/lib/agents.ts`: agent personas, prompts, per-agent evaluation. One serverless request per agent so each gets its own time budget.
+- `src/lib/llm.ts`: OpenAI-compatible client with retry and backoff for a shared, busy endpoint; tolerant JSON extraction for reasoning models.
+- `src/lib/interpret.ts`: natural language → validated action (with a rule-based fallback so the demo never stalls).
+- `src/lib/notice.ts`, `src/lib/groups.ts`, `src/lib/steps.ts`: Dino noticed, groups and stats, step plans.
+- `src/lib/persona.ts`, `src/lib/onboarding.ts`: sign-up answers → engine profile, chat context, and personalized Agent Lab weeks.
+- `src/app/api/plan`, `src/app/api/lab/runs`: MongoDB Atlas persistence.
+
+**Honest by design:** when the shared inference API is overloaded, an agent falls back to a local mutation of the current best. The Lab labels every fallback (hollow dots, "(fallback)" rows, an LLM success counter) instead of hiding it.
 
 ## Run locally
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in Luminal keys (optional)
+cp .env.example .env.local   # optional: LUMINAL_API_KEY, MONGODB_URI
 npm run dev                  # http://localhost:3000
 npm run check                # engine sanity check: validity + headroom
 ```
 
-Without `LUMINAL_API_KEY` the lab uses **mock agents** (random mutation, clearly labeled in the UI) and the chat uses a rule-based parser, so the demo always works.
+Without `LUMINAL_API_KEY` the Lab uses clearly labeled mock agents and the chat uses a rule-based parser. Without `MONGODB_URI` everything is stored in the browser.
 
-## Deploy on Vercel
+## Deploy (Vercel)
 
-1. Push this repo to GitHub and import it in Vercel (framework: Next.js, no settings needed).
-2. Add env var `LUMINAL_API_KEY` (base URL `https://flash.luminal.cloud/v1` and model `deepseek-ai/DeepSeek-V4.1-Flash` are the defaults; override with `LUMINAL_BASE_URL` / `LUMINAL_MODEL`). Optionally `MONGODB_URI`.
+1. Import the repo in Vercel (Next.js, no settings needed).
+2. Env vars: `LUMINAL_API_KEY` (base URL `https://flash.luminal.cloud/v1` and model `deepseek-ai/DeepSeek-V4.1-Flash` are defaults; override with `LUMINAL_BASE_URL` / `LUMINAL_MODEL`), and `MONGODB_URI` (Atlas; allow `0.0.0.0/0` in Network Access since Vercel IPs change).
 3. Deploy.
+
+Login and sign-up screens are a demo flow only (no real authentication yet).
