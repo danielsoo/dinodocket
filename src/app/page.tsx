@@ -155,8 +155,14 @@ export default function Planner() {
       const data = (await res.json()) as { reply: string; action: Action; source: string };
       setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
       if (data.action?.type === "set_group") {
-        const { inst: next, matched } = assignGroup(base, data.action.group, data.action.titles);
-        if (matched) await applyEdit(next, false, `Grouped into ${data.action.group}`);
+        let next = base;
+        let matched = 0;
+        for (const g of [{ group: data.action.group, titles: data.action.titles }, ...(data.action.more ?? [])]) {
+          const r = assignGroup(next, g.group, g.titles);
+          next = r.inst;
+          matched += r.matched;
+        }
+        if (matched) await applyEdit(next, false, "Updated groups");
         else setMessages((m) => [...m, { role: "assistant", content: "I couldn't find those items on your calendar. Try the exact title, like \"THON committee\"." }]);
       } else if (data.action && data.action.type !== "none") await propose(applyAction(base, data.action), data.reply);
     } catch {

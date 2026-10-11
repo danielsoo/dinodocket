@@ -11,7 +11,7 @@ export type Action =
   | { type: "add_goal"; title: string; minutes: number; dueDay: number; dueMin: number; importance: Importance; plan: PlanStep[] }
   | { type: "update_task"; taskId: string; minutes?: number; dueDay?: number; dueMin?: number; importance?: Importance; plan?: PlanStep[] }
   | { type: "remove_task"; taskId: string }
-  | { type: "set_group"; group: string; titles: string[] }
+  | { type: "set_group"; group: string; titles: string[]; more?: { group: string; titles: string[] }[] }
   | { type: "add_event"; title: string; day: number; start: number; end: number; meeting?: boolean; link?: string; location?: string }
   | { type: "none" };
 
@@ -85,10 +85,16 @@ export function validateAction(raw: unknown, inst: Instance): Action | null {
       return { type: "add_event", title: a.title.trim().slice(0, 80), day: d, start: s, end: e, meeting: a.meeting === true || undefined, link, location };
     }
     case "set_group": {
-      const group = typeof a.group === "string" ? a.group.trim().slice(0, 24) : "";
-      const titles = (Array.isArray(a.titles) ? a.titles : []).filter((t): t is string => typeof t === "string" && !!t.trim()).slice(0, 20);
-      if (!group || !titles.length) return null;
-      return { type: "set_group", group, titles };
+      const one = (x: Record<string, unknown>) => {
+        const group = typeof x?.group === "string" ? x.group.trim().slice(0, 24) : "";
+        const titles = (Array.isArray(x?.titles) ? x.titles : []).filter((t): t is string => typeof t === "string" && !!t.trim()).slice(0, 20);
+        return group && titles.length ? { group, titles } : null;
+      };
+      const list = [one(a), ...(Array.isArray(a.assignments) ? a.assignments : []).map((x: Record<string, unknown>) => one(x))].filter(
+        (x): x is { group: string; titles: string[] } => x !== null,
+      );
+      if (!list.length) return null;
+      return { type: "set_group", group: list[0].group, titles: list[0].titles, more: list.slice(1, 8) };
     }
     case "none":
       return { type: "none" };
@@ -116,7 +122,7 @@ Allowed actions (JSON):
    // use "steps" here when the student asks to break an existing task into steps
 {"type":"remove_task","taskId":str}
 {"type":"add_event","title":str,"day":"Tue","start":"18:00","end":"20:00","meeting"?:true,"link"?:"https://...","location"?:str}   // fixed, locked commitment or blocked time; set meeting:true for calls/meetings and include a link or location ONLY if the student gave one (never invent links)
-{"type":"set_group","group":str,"titles":[str]}   // put events/tasks into a group for weekly stats; use exact titles from the calendar; a new group name is created automatically; keep the group name in the language the student used
+{"type":"set_group","group":str,"titles":[str],"assignments"?:[{"group":str,"titles":[str]}]}   // use "assignments" to apply several groups in one go   // put events/tasks into a group for weekly stats; use exact titles from the calendar; a new group name is created automatically; keep the group name in the language the student used
 {"type":"none"}
 Rules: if a detail that changes the plan is missing (how many hours a new task needs, or which day it is due), use {"type":"none"} and ask ONE short question. Never invent a due day. If a due day is given without a time, use "23:59" and mention that assumption in your reply. Never move or delete locked events.
 Example: "I want to practice making croissants" -> {"reply":"...","action":{"type":"add_goal","title":"Practice making croissants","steps":[{"title":"Learn lamination","detail":"Watch how butter is folded into the dough and note the fold count.","minutes":45,"resources":[{"kind":"youtube","label":"Lamination technique","query":"croissant lamination technique"}]},{"title":"Make the dough","detail":"Mix and chill the dough overnight.","minutes":60,"resources":[{"kind":"web","label":"Croissant dough recipe","query":"croissant dough recipe beginner"}]}]}}
