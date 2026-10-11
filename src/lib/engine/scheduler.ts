@@ -51,7 +51,11 @@ function priority(inst: Instance, grid: number[][], t: Task, st: Strategy) {
   );
 }
 
-export function schedule(inst: Instance, st: Strategy): Schedule {
+/**
+ * Build a plan. `keep` = sessions the student already approved: they stay exactly where they are
+ * (when still valid) and only the remaining work is placed, so one change doesn't reshuffle the week.
+ */
+export function schedule(inst: Instance, st: Strategy, keep: Session[] = []): Schedule {
   const p = inst.profile;
   const grid = buildGrid(inst);
   const initialGrid = grid.map((r) => [...r]);
@@ -59,6 +63,22 @@ export function schedule(inst: Instance, st: Strategy): Schedule {
   const remaining = new Map(inst.tasks.map((t) => [t.id, t.minutes]));
   const sessions: Session[] = [];
   const wakeS = p.wake / SLOT, sleepS = p.sleep / SLOT;
+  const taskById = new Map(inst.tasks.map((t) => [t.id, t]));
+  for (const k of [...keep].sort((a, b) => a.day - b.day || a.start - b.start)) {
+    const t = taskById.get(k.taskId);
+    if (!t || k.day < 0 || k.day >= DAYS || k.start % SLOT || k.end % SLOT || k.end <= k.start) continue;
+    if (k.start < p.wake || k.end > p.sleep || abs(k.day, k.end) > abs(t.dueDay, t.dueMin)) continue;
+    const len = k.end - k.start;
+    if (len > (remaining.get(t.id) ?? 0)) continue;
+    const s0 = k.start / SLOT, n = len / SLOT;
+    let ok = true;
+    for (let i = 0; i < n; i++) if (grid[k.day][s0 + i] !== FREE) { ok = false; break; } // a new commitment took this time
+    if (!ok) continue;
+    for (let i = 0; i < n; i++) grid[k.day][s0 + i] = WORK;
+    load[k.day] += len;
+    remaining.set(t.id, remaining.get(t.id)! - len);
+    sessions.push({ taskId: t.id, day: k.day, start: k.start, end: k.end });
+  }
   const passes = Math.max(1, Math.min(3, Math.round(st.passes)));
   const baseCap = p.maxFocusPerDay * st.dailyCapFactor;
 

@@ -238,8 +238,10 @@ export default function Planner() {
     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, busy]);
 
-  async function propose(next: Instance, label: string, baseline?: Session[]) {
-    const res = await fetch("/api/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instance: next, strategy }) });
+  async function propose(next: Instance, label: string, baseline?: Session[], fresh = false) {
+    // Changes keep the approved blocks in place; only "Generate / Re-plan week" starts from scratch.
+    const keep = fresh ? [] : (proposal?.schedule ?? approved)?.sessions ?? [];
+    const res = await fetch("/api/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instance: next, strategy, keep }) });
     const data = await res.json();
     if (!data.ok) {
       setMessages((m) => [...m, { role: "assistant", content: `The engine rejected that plan: ${data.violations?.[0] ?? "unknown error"}. Nothing was changed.` }]);
@@ -262,7 +264,7 @@ export default function Planner() {
   async function generate() {
     setBusy(true);
     try {
-      await propose(instance, "Weekly plan");
+      await propose(instance, "Weekly plan", undefined, true);
     } finally {
       setBusy(false);
     }
@@ -392,9 +394,20 @@ export default function Planner() {
     // Keep the user's personalized hours and limits when resetting the demo week.
     const answers = loadAnswers();
     snapshot("Load sample week");
-    setInstance(answers ? { ...DEMO, profile: toProfile(answers) } : DEMO);
+    const inst = answers ? { ...DEMO, profile: toProfile(answers) } : DEMO;
+    setInstance(inst);
     setApproved(null);
     setProposal(null);
+    // Show the sample as a planned week, so a later chat change only adds to it instead of planning everything at once.
+    fetch("/api/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instance: inst, strategy }) })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok) {
+          setApproved(d.schedule);
+          setMessages((m) => [...m, { role: "assistant", content: "Loaded a sample week and planned it. Now tell me a change, like \"I want to cook spaghetti for friends Friday night\", and I'll fit just that in." }]);
+        }
+      })
+      .catch(() => {});
   }
 
   const shownInst = proposal?.instance ?? instance;

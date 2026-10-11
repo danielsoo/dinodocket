@@ -125,12 +125,28 @@ export function explain(inst: Instance, sch: Schedule): string[] {
   return lines;
 }
 
-export function plan(rawInstance: unknown, rawStrategy?: unknown) {
+export function plan(rawInstance: unknown, rawStrategy?: unknown, rawKeep?: unknown) {
   const instance = sanitizeInstance(rawInstance);
   const strategy: Strategy = rawStrategy ? sanitize(rawStrategy, DEFAULT_STRATEGY) : DEFAULT_STRATEGY;
-  const sch = schedule(instance, strategy);
+  const keep = (Array.isArray(rawKeep) ? rawKeep : []).slice(0, 300).flatMap((k: Record<string, unknown>) =>
+    typeof k?.taskId === "string" && [k.day, k.start, k.end].every((x) => typeof x === "number" && Number.isFinite(x))
+      ? [{ taskId: k.taskId, day: k.day as number, start: k.start as number, end: k.end as number }]
+      : [],
+  );
+  let sch = schedule(instance, strategy, keep);
+  let note: string | null = null;
+  if (keep.length) {
+    // Keep the approved week stable, unless a fresh plan is the only way to fit the work.
+    const fresh = schedule(instance, strategy);
+    const missing = (s: Schedule) => s.unscheduled.reduce((a, u) => a + u.missing, 0);
+    if (missing(fresh) < missing(sch)) {
+      sch = fresh;
+      note = "To make everything fit, I rearranged some of your existing study blocks.";
+    } else note = "Your approved blocks stay where they are; only the change is new.";
+  }
   const sc = score(instance, sch);
   // Defense in depth: a schedule that fails validation is never returned as a proposal.
   if (!sc.feasible) return { ok: false as const, violations: sc.violations };
-  return { ok: true as const, schedule: sch, score: sc, explanation: explain(instance, sch), strategy: strategy.name };
+  const explanation = explain(instance, sch);
+  return { ok: true as const, schedule: sch, score: sc, explanation: note ? [note, ...explanation] : explanation, strategy: strategy.name };
 }
