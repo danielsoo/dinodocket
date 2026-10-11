@@ -61,3 +61,23 @@ export function useDemoUser(): DemoUser | null | undefined {
     return null;
   }
 }
+
+/** Clear this browser's planner data so the next person on a shared laptop starts fresh. */
+export function clearLocalPlan(name?: string) {
+  try {
+    ["dinodocket.v3.approved", "dinodocket.v3.savedAt", "dinodocket.onboarding", "dinodocket.strategy", "dinodocket.labRun", "dinodocket.planId"].forEach((k) =>
+      localStorage.removeItem(k),
+    );
+    localStorage.setItem(
+      "dinodocket.v3.instance",
+      JSON.stringify({
+        id: "me",
+        name: name || "Me",
+        profile: { wake: 480, sleep: 1440, focusStart: 540, focusEnd: 1080, sessionLen: 90, maxFocusPerDay: 270, breakMin: 30 },
+        fixed: [],
+        tasks: [],
+      }),
+    );
+    localStorage.setItem("dinodocket.v3.savedAt", "0");
+  } catch {}
+}

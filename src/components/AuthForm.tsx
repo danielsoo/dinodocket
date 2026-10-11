@@ -4,9 +4,10 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { demoLogin } from "@/lib/auth";
+import { clearLocalPlan, demoLogin } from "@/lib/auth";
 
-// Demo auth screen. Every submit succeeds: nothing is validated or sent anywhere.
+// Email + password auth. With MongoDB configured this is real (scrypt-hashed passwords, signed httpOnly session);
+// without a database it falls back to the local demo login so the app still works.
 
 type Mode = "login" | "signup";
 
@@ -46,13 +47,40 @@ export default function AuthForm({ mode }: { mode: Mode }) {
   const [note, setNote] = useState("");
   const c = COPY[mode];
 
-  const finish = (e?: React.FormEvent) => {
+  const finish = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (busy) return;
+    setNote("");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) return setNote("Enter a valid email address.");
+    if (password.length < 8) return setNote("Use a password with at least 8 characters.");
+    if (mode === "signup" && password !== confirm) return setNote("Passwords don't match.");
     setBusy(true);
-    demoLogin(email, mode === "signup" ? name : undefined);
-    // short pause so the button state is visible; new accounts answer the setup questions first
-    setTimeout(() => router.push(mode === "signup" ? "/onboarding" : "/"), 450);
+    try {
+      const res = await fetch(`/api/auth/${mode}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, name }) });
+      const data = await res.json();
+      if (data.enabled === false) {
+        // No database configured: keep the old demo behavior.
+        demoLogin(email, mode === "signup" ? name : undefined);
+      } else if (!res.ok || !data.user) {
+        setNote(data.error ?? "Something went wrong. Please try again.");
+        setBusy(false);
+        return;
+      } else {
+        // A fresh start for this person; on login their saved plan loads from their account.
+        clearLocalPlan(data.user.name);
+        demoLogin(data.user.email, data.user.name);
+        if (data.answers) {
+          try {
+            localStorage.setItem("dinodocket.onboarding", JSON.stringify(data.answers));
+          } catch {}
+        }
+      }
+      // new accounts answer the setup questions first
+      router.push(mode === "signup" ? "/onboarding" : "/");
+    } catch {
+      setNote("Couldn't reach the server. Please try again.");
+      setBusy(false);
+    }
   };
 
   return (
@@ -101,7 +129,7 @@ export default function AuthForm({ mode }: { mode: Mode }) {
 
         <button
           type="button"
-          onClick={() => finish()}
+          onClick={() => setNote("Google sign-in is coming soon. Use email for now.")}
           disabled={busy}
           className="mt-6 flex w-full items-center justify-center gap-2.5 rounded-xl border border-line bg-panel px-4 py-2.5 text-sm font-bold transition hover:border-accent hover:bg-bg disabled:opacity-60"
         >
@@ -135,7 +163,7 @@ export default function AuthForm({ mode }: { mode: Mode }) {
             <div className="flex items-baseline justify-between">
               <label htmlFor="password" className={label}>Password</label>
               {mode === "login" && (
-                <button type="button" onClick={() => setNote("Password reset isn't available in the demo.")} className="text-xs font-semibold text-accent hover:underline">
+                <button type="button" onClick={() => setNote("Password reset isn't available yet.")} className="text-xs font-semibold text-accent hover:underline">
                   Forgot?
                 </button>
               )}

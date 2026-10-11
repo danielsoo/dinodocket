@@ -174,6 +174,7 @@ export function applyAnswers(a: Answers, name: string, demo: Instance, baseStrat
     inst.profile = toProfile(a);
     inst.name = name || inst.name;
     localStorage.setItem(INSTANCE_KEY, JSON.stringify(inst));
+    localStorage.setItem("dinodocket.v3.savedAt", String(Date.now()));
     // The approved plan was made for the old profile; let the user regenerate.
     localStorage.removeItem("dinodocket.v3.approved");
     const rawS = localStorage.getItem(STRATEGY_KEY);

@@ -1,13 +1,26 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { demoLogout, useDemoUser } from "@/lib/auth";
+import { clearLocalPlan, demoLogin, demoLogout, useDemoUser } from "@/lib/auth";
 
-// Header account area. Demo only: reads the fake user from localStorage.
+// Header account area. The server session (httpOnly cookie) is the source of truth;
+// the local copy just lets the header render instantly.
 export default function AuthNav() {
   const user = useDemoUser();
   const router = useRouter();
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.enabled === false) return; // no database: demo mode
+        if (d.user) demoLogin(d.user.email, d.user.name);
+        else demoLogout();
+      })
+      .catch(() => {});
+  }, []);
 
   if (user === undefined) return <div className="ml-auto h-8 w-24 md:ml-4" aria-hidden />;
 
@@ -37,7 +50,11 @@ export default function AuthNav() {
         <span className="hidden max-w-[10rem] truncate text-sm font-semibold sm:inline">{user.name}</span>
       </Link>
       <button
-        onClick={() => {
+        onClick={async () => {
+          try {
+            await fetch("/api/auth/logout", { method: "POST" });
+          } catch {}
+          clearLocalPlan();
           demoLogout();
           router.push("/login");
         }}

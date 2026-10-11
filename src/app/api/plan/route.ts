@@ -1,5 +1,13 @@
 import { db, dbEnabled } from "@/lib/db";
 import { sanitizeInstance } from "@/lib/plan";
+import { currentUser } from "@/lib/session";
+
+/** Signed-in users get one plan per account; everyone else uses an anonymous per-browser id. */
+async function planKey(id: string) {
+  const u = await currentUser();
+  if (u) return `user:${u.uid}`;
+  return ID.test(id) ? id : null;
+}
 
 // Anonymous plan sync: each browser gets a random plan id (no login). Anyone with the id can open the plan,
 // which is what powers the "open on another device" link.
@@ -26,11 +34,11 @@ function sanitizeSchedule(raw: unknown) {
 
 export async function GET(req: Request) {
   if (!dbEnabled()) return Response.json({ enabled: false });
-  const id = new URL(req.url).searchParams.get("id") ?? "";
-  if (!ID.test(id)) return Response.json({ error: "bad id" }, { status: 400 });
+  const id = await planKey(new URL(req.url).searchParams.get("id") ?? "");
+  if (!id) return Response.json({ error: "bad id" }, { status: 400 });
   try {
     const doc = await (await db()).collection<PlanDoc>("plans").findOne({ _id: id });
-    return Response.json({ enabled: true, plan: doc ? { instance: doc.instance, approved: doc.approved, updatedAt: doc.updatedAt } : null });
+    return Response.json({ enabled: true, account: id.startsWith("user:"), plan: doc ? { instance: doc.instance, approved: doc.approved, updatedAt: doc.updatedAt } : null });
   } catch (e) {
     return Response.json({ enabled: true, error: e instanceof Error ? e.message : "db error" }, { status: 502 });
   }
@@ -39,8 +47,8 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
   if (!dbEnabled()) return Response.json({ enabled: false });
   const body = await req.json().catch(() => null);
-  const id = String(body?.id ?? "");
-  if (!ID.test(id)) return Response.json({ error: "bad id" }, { status: 400 });
+  const id = await planKey(String(body?.id ?? ""));
+  if (!id) return Response.json({ error: "bad id" }, { status: 400 });
   try {
     const now = new Date();
     await (await db())

@@ -13,7 +13,7 @@ export type Action =
   | { type: "update_task"; taskId: string; minutes?: number; dueDay?: number; dueMin?: number; importance?: Importance; plan?: PlanStep[] }
   | { type: "remove_task"; taskId: string }
   | { type: "set_group"; group: string; titles: string[]; more?: { group: string; titles: string[] }[] }
-  | { type: "add_event"; title: string; day: number; start: number; end: number; meeting?: boolean; link?: string; location?: string }
+  | { type: "add_event"; title: string; day: number; start: number; end: number; meeting?: boolean; link?: string; location?: string; days?: number[] }
   | { type: "none" };
 
 export interface Interpretation {
@@ -79,11 +79,12 @@ export function validateAction(raw: unknown, inst: Instance): Action | null {
     case "remove_task":
       return inst.tasks.some((t) => t.id === a.taskId) ? { type: "remove_task", taskId: String(a.taskId) } : null;
     case "add_event": {
-      const d = day(a.day), s = parseHM(a.start), e = parseHM(a.end);
+      const days = (Array.isArray(a.days) ? a.days : []).map(day).filter((x): x is number => x !== undefined);
+      const d = day(a.day) ?? days[0], s = parseHM(a.start), e = parseHM(a.end);
       if (typeof a.title !== "string" || d === undefined || s === undefined || e === undefined || e <= s) return null;
       const link = typeof a.link === "string" && /^https?:\/\/\S+$/i.test(a.link.trim()) ? a.link.trim().slice(0, 300) : undefined;
       const location = typeof a.location === "string" && a.location.trim() ? a.location.trim().slice(0, 80) : undefined;
-      return { type: "add_event", title: a.title.trim().slice(0, 80), day: d, start: s, end: e, meeting: a.meeting === true || undefined, link, location };
+      return { type: "add_event", title: a.title.trim().slice(0, 80), day: d, start: s, end: e, meeting: a.meeting === true || undefined, link, location, days: days.length ? [...new Set(days)] : undefined };
     }
     case "set_group": {
       const one = (x: Record<string, unknown>) => {
@@ -122,7 +123,7 @@ Allowed actions (JSON):
 {"type":"update_task","taskId":str,"hours"?:number,"dueDay"?:str,"dueTime"?:str,"importance"?:str,"steps"?:[...same as add_goal]}
    // use "steps" here when the student asks to break an existing task into steps
 {"type":"remove_task","taskId":str}
-{"type":"add_event","title":str,"day":"Tue","start":"18:00","end":"20:00","meeting"?:true,"link"?:"https://...","location"?:str}   // fixed, locked commitment or blocked time; set meeting:true for calls/meetings and include a link or location ONLY if the student gave one (never invent links)
+{"type":"add_event","title":str,"day":"Tue","days"?:["Mon","Wed","Fri"],"start":"18:00","end":"20:00","meeting"?:true,"link"?:"https://...","location"?:str}   // fixed, locked commitment or blocked time; use "days" for something that repeats weekly (e.g. a class on MWF); set meeting:true for calls/meetings and include a link or location ONLY if the student gave one (never invent links)
 {"type":"set_group","group":str,"titles":[str],"assignments"?:[{"group":str,"titles":[str]}]}   // use "assignments" to apply several groups in one go   // put events/tasks into a group for weekly stats; use exact titles from the calendar; a new group name is created automatically; keep the group name in the language the student used
 {"type":"none"}
 Rules: if a detail that changes the plan is missing (how many hours a new task needs, or which day it is due), use {"type":"none"} and ask ONE short question. Never invent a due day. If a due day is given without a time, use "23:59" and mention that assumption in your reply. Never move or delete locked events.

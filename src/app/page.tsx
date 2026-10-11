@@ -54,7 +54,8 @@ function applyAction(inst: Instance, a: Action): Instance {
       next.tasks = next.tasks.filter((t) => t.id !== a.taskId);
       break;
     case "add_event":
-      next.fixed.push({ id: `e${id}`, title: a.title, day: a.day, start: a.start, end: a.end, kind: a.meeting ? "meeting" : "personal", locked: true, link: a.link, location: a.location });
+      for (const [i, d] of (a.days?.length ? a.days : [a.day]).entries())
+        next.fixed.push({ id: `e${id}${i}`, title: a.title, day: d, start: a.start, end: a.end, kind: a.meeting ? "meeting" : /\b[A-Z]{2,6}\s?\d{3}/.test(a.title) ? "class" : "personal", locked: true, link: a.link, location: a.location });
       break;
   }
   return next;
@@ -91,6 +92,7 @@ export default function Planner() {
   const [planWeek, setPlanWeek] = useState<Date | null>(null); // Monday the template week is pinned to
   const [sync, setSync] = useState<"off" | "loading" | "saving" | "saved" | "error">("off");
   const [copied, setCopied] = useState(false);
+  const [account, setAccount] = useState(false);
   const chatEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -120,6 +122,15 @@ export default function Planner() {
         const data = await r.json();
         if (!data.enabled) return;
         setPlanId(planIdNow);
+        setAccount(!!data.account);
+        // Signed in: the account's plan wins if it is newer than this browser's copy (e.g. a new device).
+        const localAt = load<number>("dinodocket.v3.savedAt", 0);
+        const serverAt = data.plan?.updatedAt ? Date.parse(data.plan.updatedAt) : 0;
+        if (!shared && data.account && data.plan?.instance && serverAt > localAt) {
+          setInstance(data.plan.instance);
+          setApproved(data.plan.approved?.sessions?.length ? data.plan.approved : null);
+          setMessages((m) => [...m, { role: "assistant", content: "Loaded your plan from your account." }]);
+        }
         if (shared && data.plan?.instance) {
           setInstance(data.plan.instance);
           setApproved(data.plan.approved?.sessions?.length ? data.plan.approved : null);
@@ -152,7 +163,9 @@ export default function Planner() {
     if (ready && planWeek) save("dinodocket.planWeek", toIso(planWeek));
   }, [planWeek, ready]);
   useEffect(() => {
-    if (ready) save("dinodocket.v3.instance", instance);
+    if (!ready) return;
+    save("dinodocket.v3.instance", instance);
+    save("dinodocket.v3.savedAt", Date.now());
   }, [instance, ready]);
   useEffect(() => {
     if (ready) save("dinodocket.v3.approved", approved);
@@ -342,8 +355,8 @@ export default function Planner() {
             {planId && (
               <span className="hidden items-center gap-2 text-xs text-muted md:flex">
                 <span className={`h-2 w-2 rounded-full ${sync === "error" ? "bg-warn" : sync === "saving" ? "bg-claw" : "bg-ok"}`} aria-hidden />
-                {sync === "error" ? "MongoDB sync failed" : sync === "saving" ? "Saving to MongoDB…" : "Saved to MongoDB"}
-                <button
+                {sync === "error" ? "MongoDB sync failed" : sync === "saving" ? "Saving…" : account ? "Saved to your account" : "Saved to MongoDB"}
+                {!account && <button
                   className="font-semibold text-accent hover:underline"
                   onClick={async () => {
                     try {
@@ -355,11 +368,11 @@ export default function Planner() {
                   title="Copy a link that opens this plan on your phone or laptop"
                 >
                   {copied ? "Link copied" : "Open on another device"}
-                </button>
+                </button>}
               </span>
             )}
             <span className="hidden text-xs text-muted sm:inline">Strategy: {strategy.name}</span>
-            <button onClick={reset} className="rounded-xl px-3 py-2 text-sm font-semibold text-muted hover:bg-panel hover:text-ink">Reset</button>
+            <button onClick={reset} className="rounded-xl px-3 py-2 text-sm font-semibold text-muted hover:bg-panel hover:text-ink">Sample week</button>
             <button onClick={generate} disabled={busy} className="btn-sticker rounded-xl bg-accent px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
               {approved ? "Re-plan week" : "Generate plan"}
             </button>
@@ -423,6 +436,18 @@ export default function Planner() {
           </div>
         )}
 
+        {shownInst.fixed.length === 0 && shownInst.tasks.length === 0 && !proposal && (
+          <div className="card flex flex-wrap items-center justify-between gap-3 border-2! border-dashed! border-claw! p-5">
+            <div className="max-w-xl text-sm">
+              <div className="font-display text-lg font-semibold">Your week is empty</div>
+              <p className="mt-1 text-muted">
+                Tell Dino your schedule, for example <b className="text-ink">&quot;CMPSC 465 Mon Wed Fri 9 to 10am&quot;</b>, then your deadlines:{" "}
+                <b className="text-ink">&quot;essay due Thursday, about 5 hours&quot;</b>. Or click any empty spot on the calendar.
+              </p>
+            </div>
+            <button onClick={reset} className="rounded-xl border border-line px-3 py-2 text-sm font-semibold hover:bg-fixed">Load a sample week</button>
+          </div>
+        )}
         <PlannerCalendar
           instance={shownInst}
           sessions={shownSessions}

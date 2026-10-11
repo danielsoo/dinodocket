@@ -86,6 +86,8 @@ export default function Onboarding() {
 
   function finish() {
     applyAnswers(a, name, DEMO, DEFAULT_STRATEGY);
+    // Signed-in users keep their answers on their account (ignored when there's no session).
+    fetch("/api/auth/me", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers: a }) }).catch(() => {});
     router.push("/");
   }
 
