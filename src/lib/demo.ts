@@ -3,8 +3,8 @@ import type { Instance, Strategy } from "./engine/types";
 const h = (x: number) => Math.round(x * 60);
 
 let n = 0;
-const ev = (title: string, days: number[], s: number, e: number, kind: Instance["fixed"][number]["kind"] = "class", group?: string) =>
-  days.map((day) => ({ id: `d${n++}`, title, day, start: h(s), end: h(e), kind, locked: true, group }));
+const ev = (title: string, days: number[], s: number, e: number, kind: Instance["fixed"][number]["kind"] = "class", group?: string, locked = true) =>
+  days.map((day) => ({ id: `d${n++}`, title, day, start: h(s), end: h(e), kind, locked, group }));
 
 export const DEMO: Instance = {
   id: "demo",
@@ -20,6 +20,8 @@ export const DEMO: Instance = {
     ...ev("Work shift", [5], 11, 15, "work"),
     ...ev("THON committee", [1], 19, 20.5, "club"),
     ...ev("ACM Web meeting", [3], 19, 20.5, "club"),
+    ...ev("Gym", [1, 3], 17, 18, "personal", "Personal", false),
+    ...ev("Sunday church service", [6], 10, 12, "personal", "Personal", false),
     { id: "m1", title: "Internship recruiter call", day: 3, start: h(15.5), end: h(16), kind: "meeting", locked: true, with: "recruiter@company.com" },
     { id: "m2", title: "Research group sync", day: 0, start: h(16), end: h(16.5), kind: "meeting", locked: true, location: "Library study room 2B" },
   ],

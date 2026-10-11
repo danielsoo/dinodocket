@@ -13,9 +13,9 @@ export type Action =
   | { type: "update_task"; taskId: string; minutes?: number; dueDay?: number; dueMin?: number; importance?: Importance; plan?: PlanStep[] }
   | { type: "remove_task"; taskId: string }
   | { type: "set_group"; group: string; titles: string[]; more?: { group: string; titles: string[] }[] }
-  | { type: "update_event"; title: string; start?: number; end?: number; days?: number[]; onlyDay?: number; atStart?: number; newTitle?: string; link?: string; location?: string }
+  | { type: "update_event"; title: string; start?: number; end?: number; days?: number[]; onlyDay?: number; atStart?: number; newTitle?: string; link?: string; location?: string; locked?: boolean }
   | { type: "remove_event"; title: string; onlyDay?: number; atStart?: number }
-  | { type: "add_event"; title: string; day: number; start: number; end: number; meeting?: boolean; link?: string; location?: string; days?: number[] }
+  | { type: "add_event"; title: string; day: number; start: number; end: number; meeting?: boolean; link?: string; location?: string; days?: number[]; locked?: boolean }
   | { type: "none" };
 
 export interface Interpretation {
@@ -99,7 +99,7 @@ export function validateAction(raw: unknown, inst: Instance): Action | null {
       if (typeof a.title !== "string" || d === undefined || s === undefined || e === undefined || e <= s) return null;
       const link = typeof a.link === "string" && /^https?:\/\/\S+$/i.test(a.link.trim()) ? a.link.trim().slice(0, 300) : undefined;
       const location = typeof a.location === "string" && a.location.trim() ? a.location.trim().slice(0, 80) : undefined;
-      return { type: "add_event", title: a.title.trim().slice(0, 80), day: d, start: s, end: e, meeting: a.meeting === true || undefined, link, location, days: days.length ? [...new Set(days)] : undefined };
+      return { type: "add_event", title: a.title.trim().slice(0, 80), day: d, start: s, end: e, meeting: a.meeting === true || undefined, link, location, days: days.length ? [...new Set(days)] : undefined, locked: a.locked === true };
     }
     case "set_group": {
       const one = (x: Record<string, unknown>) => {
@@ -127,8 +127,9 @@ export function validateAction(raw: unknown, inst: Instance): Action | null {
       const link = typeof a.link === "string" && /^https?:\/\/\S+$/i.test(a.link.trim()) ? a.link.trim().slice(0, 300) : undefined;
       const location = typeof a.location === "string" && a.location.trim() ? a.location.trim().slice(0, 80) : undefined;
       const newTitle = typeof a.newTitle === "string" && a.newTitle.trim() ? a.newTitle.trim().slice(0, 80) : undefined;
-      if (s === undefined && e === undefined && !days.length && !link && !location && !newTitle) return null;
-      return { type: "update_event", title, start: s, end: e, days: days.length ? [...new Set(days)] : undefined, onlyDay, atStart, newTitle, link, location };
+      const locked = typeof a.locked === "boolean" ? a.locked : undefined;
+      if (s === undefined && e === undefined && !days.length && !link && !location && !newTitle && locked === undefined) return null;
+      return { type: "update_event", title, start: s, end: e, days: days.length ? [...new Set(days)] : undefined, onlyDay, atStart, newTitle, link, location, locked };
     }
     case "none":
       return { type: "none" };
@@ -139,7 +140,7 @@ export function validateAction(raw: unknown, inst: Instance): Action | null {
 
 function summarize(inst: Instance) {
   const tasks = inst.tasks.map((t) => `- ${t.id}: "${t.title}" ${(t.minutes / 60).toFixed(1)}h, due ${DAY_NAMES[t.dueDay]} ${fmtTime(t.dueMin)}, ${t.importance}, group ${taskGroup(t)}${t.plan?.length ? `, has ${t.plan.length} steps` : ""}`).join("\n");
-  const ev = inst.fixed.map((e) => `- "${e.title}" ${DAY_NAMES[e.day]} ${fmtTime(e.start)}-${fmtTime(e.end)} (locked, group ${eventGroup(e)})`).join("\n");
+  const ev = inst.fixed.map((e) => `- "${e.title}" ${DAY_NAMES[e.day]} ${fmtTime(e.start)}-${fmtTime(e.end)} (${e.locked === false ? "not locked" : "LOCKED"}, group ${eventGroup(e)})`).join("\n");
   return `Groups: ${allGroups(inst).join(", ")}\nTasks:\n${tasks || "- none"}\nFixed events:\n${ev || "- none"}`;
 }
 
@@ -155,8 +156,8 @@ Allowed actions (JSON):
 {"type":"update_task","taskId":str,"hours"?:number,"dueDay"?:str,"dueTime"?:str,"importance"?:str,"steps"?:[...same as add_goal]}
    // use "steps" here when the student asks to break an existing task into steps
 {"type":"remove_task","taskId":str}
-{"type":"add_event","title":str,"day":"Tue","days"?:["Mon","Wed","Fri"],"start":"18:00","end":"20:00","meeting"?:true,"link"?:"https://...","location"?:str}   // fixed, locked commitment or blocked time; use "days" for something that repeats weekly (e.g. a class on MWF); set meeting:true for calls/meetings and include a link or location ONLY if the student gave one (never invent links)
-{"type":"update_event","title":str,"onlyDay"?:"Wed","atStart"?:"09:00","start"?:"08:00","end"?:"09:00","days"?:["Mon","Wed","Fri"],"newTitle"?:str,"link"?:str,"location"?:str}
+{"type":"add_event","title":str,"day":"Tue","days"?:["Mon","Wed","Fri"],"start":"18:00","end":"20:00","meeting"?:true,"link"?:"https://...","location"?:str,"locked"?:true}   // a commitment or blocked time; use "days" for something that repeats weekly (e.g. a class on MWF); set meeting:true for calls/meetings and include a link or location ONLY if the student gave one (never invent links)
+{"type":"update_event","title":str,"onlyDay"?:"Wed","atStart"?:"09:00","start"?:"08:00","end"?:"09:00","days"?:["Mon","Wed","Fri"],"newTitle"?:str,"link"?:str,"location"?:str,"locked"?:true|false}
    // change an existing fixed event IN PLACE. Use this, not add_event, when the student says a class/meeting moved or changed.
    // Scope: no onlyDay = every weekly occurrence ("my CMPSC 465 class moved to 8am"). onlyDay = just that day ("only Wednesday's lecture is at 8 this week").
    // atStart picks occurrences that currently start at that time (use it when two events share a title). "days" replaces which days it meets.
@@ -164,7 +165,11 @@ Allowed actions (JSON):
    // If it's unclear whether the student means every occurrence or just one day, use {"type":"none"} and ask.
 {"type":"set_group","group":str,"titles":[str],"assignments"?:[{"group":str,"titles":[str]}]}   // use "assignments" to apply several groups in one go   // put events/tasks into a group for weekly stats; use exact titles from the calendar; a new group name is created automatically; keep the group name in the language the student used
 {"type":"none"}
-Rules: if a detail that changes the plan is missing (how many hours a new task needs, or which day it is due), use {"type":"none"} and ask ONE short question. Never invent a due day. If a due day is given without a time, use "23:59" and mention that assumption in your reply. Locked events never move on their own: change them only with update_event/remove_event when the student explicitly says that commitment changed or was cancelled, and use the exact title from the calendar.
+LOCKING (priority): a LOCKED event is top priority; the engine never plans anything over it. A NOT LOCKED event is normally avoided too, but if essential/high work can't fit anywhere else, the engine may use its time.
+- If the student says something can't be missed, is non-negotiable, is very important, or asks to lock/protect/pin it (e.g. "I never miss church", "this class is mandatory", "lock my shift", "don't ever schedule over X"), set "locked":true (add_event for a new event, update_event with only "locked":true for an existing one). Say in the reply that you'll lock it and that it becomes top priority; the student approves the change, which is the confirmation.
+- If the student adds something that sounds important (a class, a work shift, a religious service, an appointment, an exam) but didn't say it can't be missed, add it without "locked" and END the reply with a short question like "Want me to lock it so nothing ever gets planned over it?".
+- If the student answers yes to that question, return update_event with the event's exact title and "locked":true. "Unlock X" / "X is optional" -> update_event with "locked":false.
+Rules: if a detail that changes the plan is missing (how many hours a new task needs, or which day it is due), use {"type":"none"} and ask ONE short question. Never invent a due day. If a due day is given without a time, use "23:59" and mention that assumption in your reply. Events never move on their own: change them only with update_event/remove_event when the student explicitly says that commitment changed or was cancelled, and use the exact title from the calendar.
 Example: "I want to practice making croissants" -> {"reply":"...","action":{"type":"add_goal","title":"Practice making croissants","steps":[{"title":"Learn lamination","detail":"Watch how butter is folded into the dough and note the fold count.","minutes":45,"resources":[{"kind":"youtube","label":"Lamination technique","query":"croissant lamination technique"}]},{"title":"Make the dough","detail":"Mix and chill the dough overnight.","minutes":60,"resources":[{"kind":"web","label":"Croissant dough recipe","query":"croissant dough recipe beginner"}]}]}}
 Reply with ONE JSON object: {"reply": "<short friendly message to the student>", "action": <action>}.`;
 
@@ -174,11 +179,27 @@ function rules(msg: string, inst: Instance): Interpretation {
   const hours = m.match(/(\d+(?:\.\d+)?)\s*(?:hours|hour|hrs|hr|h)\b/);
   const dayIdx = DAY_NAMES.findIndex((d) => new RegExp(`\\b${d.toLowerCase()}`).test(m));
   const time = m.match(/\b(?:at|by)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
+  const lockWord = m.match(/\b(unlock|lock|protect|pin)\b|can'?t miss|never miss|must attend|mandatory|non-?negotiable|빠지면 안|잠가|잠금/);
+  if (lockWord) {
+    const unlock = /\bunlock\b|optional|잠금 해제|풀어/.test(m);
+    const hit = [...new Set(inst.fixed.map((e) => e.title))].sort((x, y) => y.length - x.length).find((t) => m.includes(t.toLowerCase()));
+    if (hit) {
+      const a = validateAction({ type: "update_event", title: hit, locked: !unlock }, inst);
+      if (a)
+        return {
+          reply: unlock
+            ? `Unlocking "${hit}". I'll still avoid it, but essential work may use that time if the week is full.`
+            : `Locking "${hit}" 🔒. It's now top priority and nothing will ever be planned over it.`,
+          action: a,
+          source: "rules",
+        };
+    }
+  }
   const blocked = m.match(/(?:can't|cannot|busy|block)/);
   if (blocked && dayIdx >= 0) {
     const range = m.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:-|to)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
     if (range) {
-      const a = validateAction({ type: "add_event", title: "Blocked", day: dayIdx, start: range[1], end: range[2] }, inst);
+      const a = validateAction({ type: "add_event", title: "Blocked", day: dayIdx, start: range[1], end: range[2], locked: true }, inst);
       if (a) return { reply: `Blocking ${DAY_NAMES[dayIdx]} ${range[1]}-${range[2]}. I'll replan around it.`, action: a, source: "rules" };
     }
     return { reply: "What time range should I block? For example: \"I'm busy Tue 6pm-9pm\".", action: { type: "none" }, source: "rules" };

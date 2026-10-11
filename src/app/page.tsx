@@ -70,6 +70,7 @@ function applyAction(inst: Instance, a: Action): Instance {
         end: a.end ?? (a.start !== undefined ? a.start + (e.end - e.start) : e.end),
         link: a.link ?? e.link,
         location: a.location ?? e.location,
+        locked: a.locked ?? e.locked,
       });
       if (a.days?.length) {
         // The meeting days changed: replace every occurrence with one per new day.
@@ -85,7 +86,7 @@ function applyAction(inst: Instance, a: Action): Instance {
     }
     case "add_event":
       for (const [i, d] of (a.days?.length ? a.days : [a.day]).entries())
-        next.fixed.push({ id: `e${id}${i}`, title: a.title, day: d, start: a.start, end: a.end, kind: a.meeting ? "meeting" : /\b[A-Z]{2,6}\s?\d{3}/.test(a.title) ? "class" : "personal", locked: true, link: a.link, location: a.location });
+        next.fixed.push({ id: `e${id}${i}`, title: a.title, day: d, start: a.start, end: a.end, kind: a.meeting ? "meeting" : /\b[A-Z]{2,6}\s?\d{3}/.test(a.title) ? "class" : "personal", locked: a.locked === true, link: a.link, location: a.location });
       break;
   }
   return next;
@@ -521,7 +522,7 @@ export default function Planner() {
           onSelect={setSelected}
           onSelectEvent={(e) => setEditEvent({ event: e, isNew: false })}
           onCreate={(day, minute) =>
-            setEditEvent({ event: { id: `e${Date.now().toString(36)}`, title: "", day, start: minute, end: Math.min(1440, minute + 60), kind: "personal", locked: true }, isNew: true })
+            setEditEvent({ event: { id: `e${Date.now().toString(36)}`, title: "", day, start: minute, end: Math.min(1440, minute + 60), kind: "personal", locked: false }, isNew: true })
           }
         />
         <p className="-mt-2 text-xs text-muted">Tip: click an empty spot to add an event, or any block to edit it.</p>
@@ -609,6 +610,11 @@ export default function Planner() {
           notices={notices}
           onAsk={(msg) => send(undefined, msg)}
           onBreakDown={(title) => send(undefined, `Break "${title}" into step-by-step sessions with helpful resources.`)}
+          onLock={(title) => {
+            const n = shownInst.fixed.filter((e) => e.title.trim().toLowerCase() === title.trim().toLowerCase()).length;
+            setMessages((m) => [...m, { role: "assistant", content: `Locking "${title}"${n > 1 ? ` (all ${n} this week)` : ""} 🔒. It's top priority now, so I'll always plan around it.` }]);
+            propose(applyAction(shownInst, { type: "update_event", title, locked: true }), `Lock ${title}`, proposal ? undefined : approved?.sessions);
+          }}
         />
 
         <TaskList
@@ -740,7 +746,7 @@ function StatsCard({ instance, schedule, onChange }: { instance: Instance; sched
   );
 }
 
-function NoticePanel({ notices, onAsk, onBreakDown }: { notices: Notice[]; onAsk: (m: string) => void; onBreakDown: (t: string) => void }) {
+function NoticePanel({ notices, onAsk, onBreakDown, onLock }: { notices: Notice[]; onAsk: (m: string) => void; onBreakDown: (t: string) => void; onLock: (title: string) => void }) {
   const [openDraft, setOpenDraft] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -769,6 +775,7 @@ function NoticePanel({ notices, onAsk, onBreakDown }: { notices: Notice[]; onAsk
                         const a = n.action!;
                         if (a.kind === "draft") setOpenDraft(openDraft === n.id ? null : n.id);
                         else if (a.kind === "ask") onAsk(a.message);
+                        else if (a.kind === "lock") onLock(a.title);
                         else onBreakDown(a.taskTitle);
                       }}
                     >

@@ -3,7 +3,7 @@ import {
   type Instance, type Schedule, type Session, type Strategy, type Task, type Unscheduled,
 } from "./types";
 
-const FREE = 0, FIXED = 1, WORK = 2;
+const FREE = 0, FIXED = 1, WORK = 2, FLEX = 3; // FLEX = time held by an unlocked event
 const LATE = 22 * 60;
 
 export function fmtTime(min: number) {
@@ -20,7 +20,10 @@ const abs = (day: number, min: number) => day * 1440 + min;
 export function buildGrid(inst: Instance): number[][] {
   const grid = Array.from({ length: DAYS }, () => new Array(SLOTS_PER_DAY).fill(FREE));
   for (const e of inst.fixed) {
-    for (let s = Math.floor(e.start / SLOT); s < Math.ceil(e.end / SLOT); s++) grid[e.day][s] = FIXED;
+    const soft = e.locked === false;
+    for (let s = Math.floor(e.start / SLOT); s < Math.ceil(e.end / SLOT); s++)
+      if (!soft) grid[e.day][s] = FIXED;
+      else if (grid[e.day][s] === FREE) grid[e.day][s] = FLEX;
   }
   return grid;
 }
@@ -61,11 +64,16 @@ export function schedule(inst: Instance, st: Strategy): Schedule {
 
   const order = [...inst.tasks].sort((a, b) => priority(inst, grid, b, st) - priority(inst, grid, a, st));
 
-  for (let pass = 1; pass <= passes; pass++) {
-    const cap = pass === 1 ? baseCap : pass === 2 ? baseCap * 1.35 : Infinity;
+  // Last resort pass: if essential/high work still doesn't fit, it may use time held by UNLOCKED events.
+  // Locked events are never touched. Notices tell the student which unlocked event gave up its time.
+  const hasFlex = grid.some((r) => r.includes(FLEX));
+  for (let pass = 1; pass <= passes + (hasFlex ? 1 : 0); pass++) {
+    const flex = pass > passes;
+    const cap = flex || pass >= 3 ? Infinity : pass === 1 ? baseCap : baseCap * 1.35;
     const breaks = st.respectBreaks && pass === 1;
-    const minChunk = pass === passes ? SLOT : Math.max(SLOT, st.minSession);
+    const minChunk = pass >= passes ? SLOT : Math.max(SLOT, st.minSession);
     for (const t of order) {
+      if (flex && t.importance !== "essential" && t.importance !== "high") continue;
       const due = abs(t.dueDay, t.dueMin);
       let guard = 0;
       while ((remaining.get(t.id) ?? 0) > 0 && guard++ < 50) {
@@ -81,7 +89,7 @@ export function schedule(inst: Instance, st: Strategy): Schedule {
               const endAbs = abs(d, (s + n) * SLOT);
               if (endAbs > due) break;
               let ok = true;
-              for (let k = 0; k < n; k++) if (grid[d][s + k] !== FREE) { ok = false; break; }
+              for (let k = 0; k < n; k++) { const c = grid[d][s + k]; if (c !== FREE && !(flex && c === FLEX)) { ok = false; break; } }
               if (!ok) continue;
               const before = s > 0 && grid[d][s - 1] !== FREE ? 1 : 0;
               const after = s + n < SLOTS_PER_DAY && grid[d][s + n] !== FREE ? 1 : 0;

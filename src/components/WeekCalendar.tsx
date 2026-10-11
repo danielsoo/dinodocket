@@ -130,17 +130,18 @@ export default function WeekCalendar({
                     type="button"
                     key={e.id}
                     onClick={() => onSelectEvent?.(e)}
-                    className={`absolute inset-x-1 overflow-hidden rounded-lg px-2 text-left leading-tight text-fixed-ink transition hover:brightness-[0.97] focus-visible:outline-2 focus-visible:outline-accent ${h < 2 * PX ? "flex items-center gap-1" : "py-1"} ${missing ? "ring-1 ring-warn" : ""}`}
+                    className={`absolute inset-x-1 overflow-hidden rounded-lg px-2 text-left leading-tight text-fixed-ink transition hover:brightness-[0.97] focus-visible:outline-2 focus-visible:outline-accent ${h < 2 * PX ? "flex items-center gap-1" : "py-1"} ${missing ? "ring-1 ring-warn" : e.locked === false ? "border border-dashed border-line" : ""}`}
                     style={{
                       top: y(e.start) + 1,
                       height: Math.max(PX - 2, h - 2),
                       background: e.color ? `color-mix(in srgb, ${e.color} 14%, var(--panel))` : "var(--fixed-bg)",
                       boxShadow: `inset 3px 0 0 color-mix(in srgb, ${accent} 55%, transparent)`,
                     }}
-                    title={`${e.title} (fixed) ${fmtTime(e.start)}-${fmtTime(e.end)}${e.location ? ` · ${e.location}` : ""}${missing ? " · no link or location" : ""} · click to edit`}
+                    title={`${e.title} (${e.locked === false ? "not locked" : "locked"}) ${fmtTime(e.start)}-${fmtTime(e.end)}${e.location ? ` · ${e.location}` : ""}${missing ? " · no link or location" : ""} · click to edit`}
                   >
                     <span className="block truncate text-[11px] font-bold">
                       {missing && <span className="text-warn">⚠ </span>}
+                      {e.locked !== false && <span aria-label="locked" className="mr-0.5 text-[9px]">🔒</span>}
                       {e.title}
                     </span>
                     {h >= 2 * PX && <span className="block truncate text-[10px] opacity-75">{span(e.start, e.end)}</span>}

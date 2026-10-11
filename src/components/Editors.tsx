@@ -161,6 +161,17 @@ export function EventEditor({
           </div>
         </div>
         {e.end <= e.start && <p className="text-xs text-warn">End time must be after the start.</p>}
+        <label className={`flex items-start gap-2 rounded-xl border p-3 text-sm ${e.locked !== false ? "border-accent bg-accent/5" : "border-line"}`}>
+          <input type="checkbox" className="mt-0.5" checked={e.locked !== false} onChange={(x) => setE({ ...e, locked: x.target.checked })} />
+          <span>
+            <span className="font-bold">🔒 Lock it (can&apos;t miss)</span>
+            <span className="block text-xs text-muted">
+              {e.locked !== false
+                ? "Top priority. Nothing will ever be planned over it."
+                : "Not locked. I avoid it, but essential work may use this time if the week is full."}
+            </span>
+          </span>
+        </label>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={meeting} onChange={(x) => setE({ ...e, kind: x.target.checked ? "meeting" : e.kind === "meeting" ? "personal" : e.kind })} />
           This is a meeting or call

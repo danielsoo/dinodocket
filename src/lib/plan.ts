@@ -33,7 +33,7 @@ export function sanitizeInstance(raw: unknown): Instance {
       start,
       end: Math.max(start + 30, snap(num(e.end, 30, 1440, start + 60))),
       kind: KINDS.includes(e.kind as FixedEvent["kind"]) ? (e.kind as FixedEvent["kind"]) : "event",
-      locked: true, // the engine never moves fixed events, whatever the client says
+      locked: e.locked !== false, // the engine never moves events; locked ones also can't give up time to work
       link: safeLink(e.link),
       location: typeof e.location === "string" && e.location.trim() ? e.location.trim().slice(0, 80) : undefined,
       with: typeof e.with === "string" && e.with.trim() ? e.with.trim().slice(0, 80) : undefined,

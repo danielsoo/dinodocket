@@ -23,7 +23,9 @@ export interface FixedEvent {
   start: number; // minutes from day start
   end: number;
   kind: "class" | "work" | "club" | "event" | "personal" | "meeting";
-  locked: boolean; // locked events can never be moved by the engine
+  // Locked = top priority: the engine never plans anything over it. Unlocked events are also avoided,
+  // but when essential/high work can't fit anywhere else, the engine may use that time and says so.
+  locked: boolean;
   link?: string; // video call link, if any
   location?: string;
   with?: string; // who the meeting is with

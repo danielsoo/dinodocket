@@ -4,7 +4,8 @@ import { fmtTime, dueLabel } from "./engine/scheduler";
 export type NoticeAction =
   | { kind: "draft"; label: string; text: string }
   | { kind: "breakdown"; label: string; taskTitle: string }
-  | { kind: "ask"; label: string; message: string };
+  | { kind: "ask"; label: string; message: string }
+  | { kind: "lock"; label: string; title: string };
 
 export interface Notice {
   id: string;
@@ -30,7 +31,9 @@ export function computeNotices(inst: Instance, sch: Schedule | null): Notice[] {
       const a = f[i], b = f[j];
       if (a.day !== b.day || !(a.start < b.end && b.start < a.end)) continue;
       const when = `${DAY_NAMES[a.day]} ${fmtTime(Math.max(a.start, b.start))} to ${fmtTime(Math.min(a.end, b.end))}`;
-      const movable = a.kind === "class" ? b : b.kind === "class" ? a : b; // classes rarely move; ask to move the other one
+      // Ask to move the one that matters less: an unlocked event before a locked one, anything before a class.
+      const aSoft = a.locked === false, bSoft = b.locked === false;
+      const movable = aSoft !== bSoft ? (aSoft ? a : b) : a.kind === "class" ? b : b.kind === "class" ? a : b;
       out.push({
         id: `double-${a.id}-${b.id}`,
         level: "warn",
@@ -43,6 +46,24 @@ export function computeNotices(inst: Instance, sch: Schedule | null): Notice[] {
         },
       });
     }
+
+  // 0b. Things that sound like they can't be missed, but aren't locked yet. Ask once per title.
+  const MUST = /\b(church|mass|worship|service|temple|mosque|synagogue|prayer|class|lecture|lab|recitation|exam|midterm|final|quiz|shift|work|appointment|doctor|dentist|therapy|interview|practice|game)\b|교회|예배|미사|수업|시험|알바|근무|병원|면접/i;
+  const asked = new Set<string>();
+  for (const e of inst.fixed) {
+    const key = e.title.trim().toLowerCase();
+    if (e.locked !== false || asked.has(key)) continue;
+    if (!(e.kind === "class" || e.kind === "work" || MUST.test(e.title))) continue;
+    asked.add(key);
+    const n = inst.fixed.filter((x) => x.title.trim().toLowerCase() === key).length;
+    out.push({
+      id: `lock-${e.id}`,
+      level: "info",
+      title: `Should I lock "${e.title}"?`,
+      detail: `It looks like something you can't miss${n > 1 ? ` (${n} times this week)` : ""}. Locked events are top priority: I always plan around them, even when the week is full.`,
+      action: { kind: "lock", label: "Lock it", title: e.title },
+    });
+  }
 
   // 1. Meetings that are missing the one detail you need to actually show up.
   for (const e of inst.fixed) {
@@ -70,6 +91,21 @@ export function computeNotices(inst: Instance, sch: Schedule | null): Notice[] {
         detail: `${inst.tasks.length} tasks are waiting. Generate a plan to see whether everything fits.`,
       });
     return out;
+  }
+
+  // 1b. Essential work that only fit by using time from an unlocked event.
+  for (const e of inst.fixed) {
+    if (e.locked !== false) continue;
+    const over = sch.sessions.filter((s) => s.day === e.day && s.start < e.end && e.start < s.end);
+    if (!over.length) continue;
+    const names = [...new Set(over.map((s) => inst.tasks.find((t) => t.id === s.taskId)?.title ?? "work"))];
+    out.push({
+      id: `flex-${e.id}`,
+      level: "warn",
+      title: `"${e.title}" ${DAY_NAMES[e.day]} gives up its time to ${names.join(", ")}`,
+      detail: `The week is full, so this essential work only fits during ${e.title} (${fmtTime(e.start)} to ${fmtTime(e.end)}), which isn't locked. Lock it and I'll keep it, even if that means something doesn't fit.`,
+      action: { kind: "lock", label: `Lock "${e.title}"`, title: e.title },
+    });
   }
 
   // 2. Work that does not fit at all.

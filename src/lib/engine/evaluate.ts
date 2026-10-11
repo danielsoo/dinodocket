@@ -12,7 +12,8 @@ export function validate(inst: Instance, sch: Schedule): string[] {
   // Fixed events may overlap each other (real double-bookings happen; we surface them as a notice).
   // What the engine must never do is put work on top of anything.
   const blocks = [
-    ...inst.fixed.map((e) => ({ label: e.title, day: e.day, start: e.start, end: e.end, fixed: true })),
+    // Unlocked events may give up their time to essential work (last resort), so only locked ones are hard.
+    ...inst.fixed.filter((e) => e.locked !== false).map((e) => ({ label: e.title, day: e.day, start: e.start, end: e.end, fixed: true })),
     ...sch.sessions.map((s) => ({ label: tasks.get(s.taskId)?.title ?? s.taskId, day: s.day, start: s.start, end: s.end, fixed: false })),
   ];
   for (const s of sch.sessions) {
