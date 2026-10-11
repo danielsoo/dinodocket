@@ -289,13 +289,25 @@ export default function Planner() {
     if (!proposal) return null;
     const before = new Set((approved?.sessions ?? []).map(key));
     const after = new Set(proposal.schedule.sessions.map(key));
-    return { added: [...after].filter((k) => !before.has(k)).length, removed: [...before].filter((k) => !after.has(k)).length };
+    const mins = (k: string) => {
+      const [, , a, b] = k.split("|").map(Number);
+      return b - a;
+    };
+    return {
+      added: [...after].filter((k) => !before.has(k)).reduce((m, k) => m + mins(k), 0),
+      removed: [...before].filter((k) => !after.has(k)).reduce((m, k) => m + mins(k), 0),
+    };
   }, [proposal, approved]);
   const notices = useMemo(() => computeNotices(shownInst, shownSched), [shownInst, shownSched]);
   const placed = (id: string) => shownSessions.filter((s) => s.taskId === id).reduce((a, s) => a + s.end - s.start, 0);
   const status = proposal ? "Proposal" : approved ? "Approved" : "Draft";
   const warnings = proposal?.explanation.filter((l) => l.startsWith("⚠")) ?? [];
-  const notes = proposal?.explanation.filter((l) => !l.startsWith("⚠")) ?? [];
+  // "Placed Xh of Yh ..." is already the card's headline, so leave it out of the list.
+  const notes = proposal?.explanation.filter((l) => !l.startsWith("⚠") && !l.startsWith("Placed ")) ?? [];
+  const highlights = [...warnings.map((t) => ({ t: t.replace(/^⚠\s*/, ""), warn: true })), ...notes.map((t) => ({ t, warn: /over your|before it is due|little room|cannot|couldn/i.test(t) }))];
+  const h1 = (m: number) => `${Math.round((m / 60) * 10) / 10}h`;
+  const placedMin = proposal?.schedule.sessions.reduce((a, x) => a + x.end - x.start, 0) ?? 0;
+  const neededMin = (proposal?.instance ?? instance).tasks.reduce((a, t) => a + t.minutes, 0);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
@@ -340,43 +352,59 @@ export default function Planner() {
         </div>
 
         {proposal && (
-          <div className="card overflow-hidden border-2! border-claw!">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
-              <div className="min-w-0">
-                <div className="font-display text-base font-semibold">Review proposed changes</div>
-                <div className="text-xs text-muted">
-                  {diff?.added ?? 0} added · {diff?.removed ?? 0} moved or removed · dashed blocks are new. Nothing changes until you approve.
+          <div className="card overflow-hidden">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-claw" aria-hidden />
+                  <span className="font-display text-base font-semibold">{approved ? "Dino suggests some changes" : "Here's a plan for your week"}</span>
                 </div>
+                <p className="mt-0.5 text-sm text-muted">
+                  {placedMin >= neededMin ? `All ${h1(neededMin)} of work fits.` : `${h1(placedMin)} of ${h1(neededMin)} fits.`}{" "}
+                  {approved && diff ? `${h1(diff.added)} added, ${h1(diff.removed)} moved or removed.` : "Nothing is saved until you approve."}
+                </p>
               </div>
               <div className="flex gap-2">
-                <button onClick={reject} className="rounded-xl border border-line px-3 py-1.5 text-sm font-semibold hover:bg-fixed">Reject</button>
-                <button onClick={approve} className="btn-sticker rounded-xl bg-ok px-4 py-1.5 text-sm font-bold text-white">Approve</button>
+                <button onClick={reject} className="rounded-xl px-3 py-2 text-sm font-semibold text-muted hover:bg-fixed hover:text-ink">Discard</button>
+                <button onClick={approve} className="btn-sticker rounded-xl bg-ok px-4 py-2 text-sm font-bold text-white">Approve</button>
               </div>
             </div>
-            <div className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_auto]">
-              <div className="space-y-1.5 text-sm">
-                {warnings.map((l, i) => (
-                  <p key={`w${i}`} className="text-warn">{l.replace(/^⚠\s*/, "⚠ ")}</p>
-                ))}
-                {notes.slice(0, 3).map((l, i) => (
-                  <p key={`n${i}`} className="text-muted">{l}</p>
-                ))}
-                {notes.length > 3 && (
-                  <details className="text-muted">
-                    <summary className="cursor-pointer text-xs">More details</summary>
-                    {notes.slice(3).map((l, i) => <p key={i} className="mt-1">{l}</p>)}
-                  </details>
-                )}
+            {highlights.length > 0 && (
+              <div className="border-t border-line px-5 py-3">
+                <ul className="space-y-1.5 text-sm">
+                  {highlights.slice(0, 2).map((l, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${l.warn ? "bg-warn" : "bg-ok"}`} aria-hidden />
+                      <span className={l.warn ? "text-ink" : "text-muted"}>{l.t}</span>
+                    </li>
+                  ))}
+                </ul>
+                <details className="group mt-2">
+                  <summary className="cursor-pointer list-none text-xs font-semibold text-accent hover:underline">
+                    <span className="group-open:hidden">Show details</span>
+                    <span className="hidden group-open:inline">Hide details</span>
+                  </summary>
+                  {highlights.length > 2 && (
+                    <ul className="mt-2 space-y-1.5 text-sm text-muted">
+                      {highlights.slice(2).map((l, i) => (
+                        <li key={i} className="flex gap-2">
+                          <span className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${l.warn ? "bg-warn" : "bg-line"}`} aria-hidden />
+                          {l.t}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <dl className="mt-3 flex flex-wrap gap-1.5">
+                    {METRICS.map(({ k, label }) => (
+                      <div key={k} className="flex items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs">
+                        <dt className="text-muted">{label}</dt>
+                        <dd className="font-bold">{pct(proposal.score[k])}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </details>
               </div>
-              <dl className="grid grid-cols-5 gap-2 md:grid-cols-1 md:gap-1.5">
-                {METRICS.map(({ k, label }) => (
-                  <div key={k} className="flex flex-col items-start md:flex-row md:items-center md:gap-2">
-                    <dd className="w-10 font-mono text-sm font-semibold">{pct(proposal.score[k])}</dd>
-                    <dt className="text-[11px] leading-tight text-muted">{label}</dt>
-                  </div>
-                ))}
-              </dl>
-            </div>
+            )}
           </div>
         )}
 
