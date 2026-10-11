@@ -121,11 +121,14 @@ export function EventEditor({
   instance: Instance;
   event: FixedEvent;
   isNew: boolean;
-  onSave: (e: FixedEvent) => void;
-  onDelete: (id: string) => void;
+  onSave: (e: FixedEvent, all: boolean) => void;
+  onDelete: (id: string, all: boolean) => void;
   onClose: () => void;
 }) {
   const [e, setE] = useState<FixedEvent>({ ...event, group: eventGroup(event) });
+  // Repeating events share a title (e.g. a class on Mon/Wed/Fri). Let the user change one day or every occurrence.
+  const siblings = isNew ? 0 : instance.fixed.filter((x) => x.id !== event.id && x.title.trim().toLowerCase() === event.title.trim().toLowerCase()).length;
+  const [all, setAll] = useState(false);
   const meeting = e.kind === "meeting";
   const valid = e.title.trim() && e.end > e.start;
   return (
@@ -134,7 +137,7 @@ export function EventEditor({
         className="space-y-4 p-5"
         onSubmit={(ev) => {
           ev.preventDefault();
-          if (valid) onSave({ ...e, title: e.title.trim() });
+          if (valid) onSave({ ...e, title: e.title.trim() }, siblings > 0 && all);
         }}
       >
         <div>
@@ -182,9 +185,22 @@ export function EventEditor({
           <span className={labelCls}>Color</span>
           <ColorPicker value={e.color} onChange={(c) => setE({ ...e, color: c })} fallback={groupColor(e.group ?? "Other", instance)} />
         </div>
+        {siblings > 0 && (
+          <fieldset className="rounded-xl border border-line p-3">
+            <legend className="px-1 text-xs font-bold uppercase tracking-wide text-muted">This repeats</legend>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="radio" name="ev-scope" checked={!all} onChange={() => setAll(false)} />
+              Only this {DAY_NAMES[event.day]}
+            </label>
+            <label className="mt-1 flex items-center gap-2 text-sm">
+              <input type="radio" name="ev-scope" checked={all} onChange={() => setAll(true)} />
+              All {siblings + 1} &ldquo;{event.title}&rdquo; events (each keeps its own day)
+            </label>
+          </fieldset>
+        )}
         <div className="flex items-center justify-between gap-2 border-t border-line pt-4">
           {!isNew ? (
-            <button type="button" onClick={() => onDelete(e.id)} className="rounded-xl px-3 py-2 text-sm font-semibold text-warn hover:bg-warn/10">Delete</button>
+            <button type="button" onClick={() => onDelete(e.id, siblings > 0 && all)} className="rounded-xl px-3 py-2 text-sm font-semibold text-warn hover:bg-warn/10">{siblings > 0 && all ? `Delete all ${siblings + 1}` : "Delete"}</button>
           ) : <span />}
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="rounded-xl border border-line px-3 py-2 text-sm font-semibold hover:bg-fixed">Cancel</button>

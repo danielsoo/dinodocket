@@ -13,6 +13,8 @@ export type Action =
   | { type: "update_task"; taskId: string; minutes?: number; dueDay?: number; dueMin?: number; importance?: Importance; plan?: PlanStep[] }
   | { type: "remove_task"; taskId: string }
   | { type: "set_group"; group: string; titles: string[]; more?: { group: string; titles: string[] }[] }
+  | { type: "update_event"; title: string; start?: number; end?: number; days?: number[]; onlyDay?: number; atStart?: number; newTitle?: string; link?: string; location?: string }
+  | { type: "remove_event"; title: string; onlyDay?: number; atStart?: number }
   | { type: "add_event"; title: string; day: number; start: number; end: number; meeting?: boolean; link?: string; location?: string; days?: number[] }
   | { type: "none" };
 
@@ -43,6 +45,19 @@ const day = (x: unknown): number | undefined => {
   }
   return undefined;
 };
+
+/** Fixed events whose title matches (exact, then contains), case-insensitive. */
+export function matchEvents(inst: Instance, title: string) {
+  const t = title.trim().toLowerCase();
+  const exact = inst.fixed.filter((e) => e.title.toLowerCase() === t);
+  if (exact.length) return exact;
+  return inst.fixed.filter((e) => e.title.toLowerCase().includes(t) || t.includes(e.title.toLowerCase()));
+}
+
+/** Occurrences of a titled event, optionally narrowed to one day and/or one start time. */
+export function selectEvents(inst: Instance, title: string, onlyDay?: number, atStart?: number) {
+  return matchEvents(inst, title).filter((e) => (onlyDay === undefined || e.day === onlyDay) && (atStart === undefined || e.start === atStart));
+}
 
 /** Validate an untrusted action against the current instance. Returns null if unusable. */
 export function validateAction(raw: unknown, inst: Instance): Action | null {
@@ -98,6 +113,23 @@ export function validateAction(raw: unknown, inst: Instance): Action | null {
       if (!list.length) return null;
       return { type: "set_group", group: list[0].group, titles: list[0].titles, more: list.slice(1, 8) };
     }
+    case "update_event":
+    case "remove_event": {
+      const title = typeof a.title === "string" ? a.title.trim() : "";
+      if (!title || !matchEvents(inst, title).length) return null;
+      const onlyDay = day(a.onlyDay);
+      const atStart = parseHM(a.atStart);
+      if (!selectEvents(inst, title, onlyDay, atStart).length) return null;
+      if (a.type === "remove_event") return { type: "remove_event", title, onlyDay, atStart };
+      const s = parseHM(a.start), e = parseHM(a.end);
+      if (s !== undefined && e !== undefined && e <= s) return null;
+      const days = (Array.isArray(a.days) ? a.days : []).map(day).filter((x): x is number => x !== undefined);
+      const link = typeof a.link === "string" && /^https?:\/\/\S+$/i.test(a.link.trim()) ? a.link.trim().slice(0, 300) : undefined;
+      const location = typeof a.location === "string" && a.location.trim() ? a.location.trim().slice(0, 80) : undefined;
+      const newTitle = typeof a.newTitle === "string" && a.newTitle.trim() ? a.newTitle.trim().slice(0, 80) : undefined;
+      if (s === undefined && e === undefined && !days.length && !link && !location && !newTitle) return null;
+      return { type: "update_event", title, start: s, end: e, days: days.length ? [...new Set(days)] : undefined, onlyDay, atStart, newTitle, link, location };
+    }
     case "none":
       return { type: "none" };
     default:
@@ -124,9 +156,15 @@ Allowed actions (JSON):
    // use "steps" here when the student asks to break an existing task into steps
 {"type":"remove_task","taskId":str}
 {"type":"add_event","title":str,"day":"Tue","days"?:["Mon","Wed","Fri"],"start":"18:00","end":"20:00","meeting"?:true,"link"?:"https://...","location"?:str}   // fixed, locked commitment or blocked time; use "days" for something that repeats weekly (e.g. a class on MWF); set meeting:true for calls/meetings and include a link or location ONLY if the student gave one (never invent links)
+{"type":"update_event","title":str,"onlyDay"?:"Wed","atStart"?:"09:00","start"?:"08:00","end"?:"09:00","days"?:["Mon","Wed","Fri"],"newTitle"?:str,"link"?:str,"location"?:str}
+   // change an existing fixed event IN PLACE. Use this, not add_event, when the student says a class/meeting moved or changed.
+   // Scope: no onlyDay = every weekly occurrence ("my CMPSC 465 class moved to 8am"). onlyDay = just that day ("only Wednesday's lecture is at 8 this week").
+   // atStart picks occurrences that currently start at that time (use it when two events share a title). "days" replaces which days it meets.
+{"type":"remove_event","title":str,"onlyDay"?:"Tue","atStart"?:"09:00"}   // delete a fixed event: all occurrences, or just one day / one start time
+   // If it's unclear whether the student means every occurrence or just one day, use {"type":"none"} and ask.
 {"type":"set_group","group":str,"titles":[str],"assignments"?:[{"group":str,"titles":[str]}]}   // use "assignments" to apply several groups in one go   // put events/tasks into a group for weekly stats; use exact titles from the calendar; a new group name is created automatically; keep the group name in the language the student used
 {"type":"none"}
-Rules: if a detail that changes the plan is missing (how many hours a new task needs, or which day it is due), use {"type":"none"} and ask ONE short question. Never invent a due day. If a due day is given without a time, use "23:59" and mention that assumption in your reply. Never move or delete locked events.
+Rules: if a detail that changes the plan is missing (how many hours a new task needs, or which day it is due), use {"type":"none"} and ask ONE short question. Never invent a due day. If a due day is given without a time, use "23:59" and mention that assumption in your reply. Locked events never move on their own: change them only with update_event/remove_event when the student explicitly says that commitment changed or was cancelled, and use the exact title from the calendar.
 Example: "I want to practice making croissants" -> {"reply":"...","action":{"type":"add_goal","title":"Practice making croissants","steps":[{"title":"Learn lamination","detail":"Watch how butter is folded into the dough and note the fold count.","minutes":45,"resources":[{"kind":"youtube","label":"Lamination technique","query":"croissant lamination technique"}]},{"title":"Make the dough","detail":"Mix and chill the dough overnight.","minutes":60,"resources":[{"kind":"web","label":"Croissant dough recipe","query":"croissant dough recipe beginner"}]}]}}
 Reply with ONE JSON object: {"reply": "<short friendly message to the student>", "action": <action>}.`;
 

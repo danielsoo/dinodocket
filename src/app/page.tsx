@@ -13,7 +13,7 @@ import { loadAnswers, summary, toProfile } from "@/lib/onboarding";
 import { DAY_NAMES, type FixedEvent, type Importance, type Instance, type Schedule, type Session, type Strategy, type Task } from "@/lib/engine/types";
 import { fmtTime } from "@/lib/engine/scheduler";
 import { computeNotices, type Notice } from "@/lib/notice";
-import type { Action } from "@/lib/interpret";
+import { selectEvents, type Action } from "@/lib/interpret";
 
 type Score = { total: number; completion: number; focusFit: number; livable: number; breaks: number; buffer: number };
 type Proposal = { instance: Instance; schedule: Schedule; explanation: string[]; score: Score; label: string };
@@ -53,6 +53,34 @@ function applyAction(inst: Instance, a: Action): Instance {
     case "remove_task":
       next.tasks = next.tasks.filter((t) => t.id !== a.taskId);
       break;
+    case "remove_event": {
+      const ids = new Set(selectEvents(next, a.title, a.onlyDay, a.atStart).map((e) => e.id));
+      next.fixed = next.fixed.filter((e) => !ids.has(e.id));
+      break;
+    }
+    case "update_event": {
+      const hits = selectEvents(next, a.title, a.onlyDay, a.atStart);
+      if (!hits.length) break;
+      const patch = (e: FixedEvent): FixedEvent => ({
+        ...e,
+        title: a.newTitle ?? e.title,
+        start: a.start ?? e.start,
+        end: a.end ?? (a.start !== undefined ? a.start + (e.end - e.start) : e.end),
+        link: a.link ?? e.link,
+        location: a.location ?? e.location,
+      });
+      if (a.days?.length) {
+        // The meeting days changed: replace every occurrence with one per new day.
+        const tmpl = patch(hits[0]);
+        const ids = new Set(hits.map((e) => e.id));
+        next.fixed = next.fixed.filter((e) => !ids.has(e.id));
+        a.days.forEach((d, i) => next.fixed.push({ ...tmpl, id: `e${id}${i}`, day: d }));
+      } else {
+        const ids = new Set(hits.map((e) => e.id));
+        next.fixed = next.fixed.map((e) => (ids.has(e.id) ? patch(e) : e));
+      }
+      break;
+    }
     case "add_event":
       for (const [i, d] of (a.days?.length ? a.days : [a.day]).entries())
         next.fixed.push({ id: `e${id}${i}`, title: a.title, day: d, start: a.start, end: a.end, kind: a.meeting ? "meeting" : /\b[A-Z]{2,6}\s?\d{3}/.test(a.title) ? "class" : "personal", locked: true, link: a.link, location: a.location });
@@ -266,18 +294,30 @@ export default function Planner() {
     }
   }
 
-  function saveEvent(e: FixedEvent, isNew: boolean) {
+  const sameTitle = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  function saveEvent(e: FixedEvent, isNew: boolean, all = false) {
     const base = proposal?.instance ?? instance;
     const old = base.fixed.find((x) => x.id === e.id);
     const timing = isNew || !old || old.day !== e.day || old.start !== e.start || old.end !== e.end;
-    const next = { ...base, fixed: isNew ? [...base.fixed, e] : base.fixed.map((x) => (x.id === e.id ? e : x)) };
+    let fixed: FixedEvent[];
+    if (isNew) fixed = [...base.fixed, e];
+    else if (all && old) {
+      // Apply the edit to every occurrence of this repeating event; each keeps its own day.
+      fixed = base.fixed.map((x) =>
+        x.id === e.id ? e : sameTitle(x.title, old.title) ? { ...e, id: x.id, day: x.day } : x,
+      );
+    } else fixed = base.fixed.map((x) => (x.id === e.id ? e : x));
+    const n = all && old ? base.fixed.filter((x) => sameTitle(x.title, old.title)).length : 1;
     setEditEvent(null);
-    applyEdit(next, timing, isNew ? `Added ${e.title}` : `Edited ${e.title}`);
+    applyEdit({ ...base, fixed }, timing, isNew ? `Added ${e.title}` : n > 1 ? `Edited all ${n} ${e.title}` : `Edited ${e.title}`);
   }
-  function deleteEvent(id: string) {
+  function deleteEvent(id: string, all = false) {
     const base = proposal?.instance ?? instance;
+    const old = base.fixed.find((x) => x.id === id);
+    const gone = (x: FixedEvent) => x.id === id || (all && !!old && sameTitle(x.title, old.title));
+    const n = base.fixed.filter(gone).length;
     setEditEvent(null);
-    applyEdit({ ...base, fixed: base.fixed.filter((x) => x.id !== id) }, true, "Deleted event");
+    applyEdit({ ...base, fixed: base.fixed.filter((x) => !gone(x)) }, true, n > 1 ? `Deleted all ${n} ${old?.title ?? "events"}` : "Deleted event");
   }
   function saveTask(t: Task) {
     const base = proposal?.instance ?? instance;
@@ -468,7 +508,7 @@ export default function Planner() {
             instance={shownInst}
             event={editEvent.event}
             isNew={editEvent.isNew}
-            onSave={(e) => saveEvent(e, editEvent.isNew)}
+            onSave={(e, all) => saveEvent(e, editEvent.isNew, all)}
             onDelete={deleteEvent}
             onClose={() => setEditEvent(null)}
           />
