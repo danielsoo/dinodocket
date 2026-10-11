@@ -16,10 +16,12 @@ export default function WeekCalendar({
   instance,
   sessions,
   proposed,
+  onSelect,
 }: {
   instance: Instance;
   sessions: Session[];
   proposed: boolean;
+  onSelect?: (s: Session) => void;
 }) {
   const startMin = Math.min(instance.profile.wake, ...instance.fixed.map((e) => e.start)) - 30;
   const from = Math.max(0, Math.floor(startMin / 60) * 60);
@@ -71,9 +73,11 @@ export default function WeekCalendar({
                 const t = tasks.get(s.taskId);
                 const c = taskColor(instance, s.taskId);
                 return (
-                  <div
+                  <button
+                    type="button"
+                    onClick={() => onSelect?.(s)}
                     key={`${s.taskId}-${s.start}-${i}`}
-                    className={`absolute inset-x-1 overflow-hidden rounded-md px-1.5 py-0.5 text-[10px] leading-tight ${proposed ? "border-2 border-dashed" : "border"}`}
+                    className={`absolute inset-x-1 overflow-hidden rounded-md px-1.5 py-0.5 text-left text-[10px] leading-tight transition hover:brightness-95 focus-visible:outline-2 focus-visible:outline-accent ${proposed ? "border-2 border-dashed" : "border"}`}
                     style={{
                       top: y(s.start),
                       height: y(s.end) - y(s.start) - 1,
@@ -82,9 +86,12 @@ export default function WeekCalendar({
                     }}
                     title={`${t?.title ?? s.taskId} ${fmtTime(s.start)}-${fmtTime(s.end)}${proposed ? " (proposed)" : ""}`}
                   >
-                    <span className="font-semibold" style={{ color: c }}>{t?.title ?? s.taskId}</span>
+                    <span className="font-semibold" style={{ color: c }}>
+                      {t?.plan?.length ? <span aria-label="has steps">☰ </span> : null}
+                      {t?.title ?? s.taskId}
+                    </span>
                     <div className="text-muted">{fmtTime(s.start)}-{fmtTime(s.end)}</div>
-                  </div>
+                  </button>
                 );
               })}
 

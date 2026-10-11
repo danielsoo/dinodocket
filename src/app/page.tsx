@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import WeekCalendar, { taskColor } from "@/components/WeekCalendar";
+import SessionDetail from "@/components/SessionDetail";
 import { DEMO, DEFAULT_STRATEGY } from "@/lib/demo";
-import { DAY_NAMES, type Importance, type Instance, type Schedule, type Strategy } from "@/lib/engine/types";
+import { DAY_NAMES, type Importance, type Instance, type Schedule, type Session, type Strategy } from "@/lib/engine/types";
 import { fmtTime } from "@/lib/engine/scheduler";
 import type { Action } from "@/lib/interpret";
 
@@ -31,10 +32,13 @@ function applyAction(inst: Instance, a: Action): Instance {
     case "add_task":
       next.tasks.push({ id: `u${Date.now().toString(36)}`, title: a.title, minutes: a.minutes, dueDay: a.dueDay, dueMin: a.dueMin, importance: a.importance, categories: ["deadline"] });
       break;
+    case "add_goal":
+      next.tasks.push({ id: `g${Date.now().toString(36)}`, title: a.title, minutes: a.minutes, dueDay: a.dueDay, dueMin: a.dueMin, importance: a.importance, categories: ["aspiration"], plan: a.plan });
+      break;
     case "update_task":
       next.tasks = next.tasks.map((t) =>
         t.id === a.taskId
-          ? { ...t, minutes: a.minutes ?? t.minutes, dueDay: a.dueDay ?? t.dueDay, dueMin: a.dueMin ?? t.dueMin, importance: a.importance ?? t.importance }
+          ? { ...t, minutes: a.minutes ?? t.minutes, dueDay: a.dueDay ?? t.dueDay, dueMin: a.dueMin ?? t.dueMin, importance: a.importance ?? t.importance, plan: a.plan ?? t.plan }
           : t,
       );
       break;
@@ -57,11 +61,12 @@ export default function Planner() {
   const [strategy, setStrategy] = useState<Strategy>(DEFAULT_STRATEGY);
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [messages, setMessages] = useState<Msg[]>([
-    { role: "assistant", content: "Hi! I'm Dino, your DinoDocket planner. Generate this week's plan, or tell me what changed, like \"I have a CMPSC lab report due Wednesday, about 4 hours\"." },
+    { role: "assistant", content: "Hi! I'm Dino, your DinoDocket planner. Generate this week's plan, tell me what changed (\"I have a CMPSC lab report due Wednesday, about 4 hours\"), or something you want to learn (\"I want to practice making croissants\"). Click any block to see its steps." },
   ]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
+  const [selected, setSelected] = useState<Session | null>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -103,11 +108,11 @@ export default function Planner() {
     }
   }
 
-  async function send(e?: React.FormEvent) {
+  async function send(e?: React.FormEvent, override?: string) {
     e?.preventDefault();
-    const text = input.trim();
+    const text = (override ?? input).trim();
     if (!text || busy) return;
-    setInput("");
+    if (!override) setInput("");
     const history = messages.slice(-6);
     setMessages((m) => [...m, { role: "user", content: text }]);
     setBusy(true);
@@ -200,7 +205,19 @@ export default function Planner() {
           </div>
         )}
 
-        <WeekCalendar instance={shownInst} sessions={shownSessions} proposed={!!proposal} />
+        <WeekCalendar instance={shownInst} sessions={shownSessions} proposed={!!proposal} onSelect={setSelected} />
+        {selected && (
+          <SessionDetail
+            instance={shownInst}
+            sessions={shownSessions}
+            session={selected}
+            onClose={() => setSelected(null)}
+            onBreakDown={(title) => {
+              setSelected(null);
+              send(undefined, `Break "${title}" into step-by-step sessions with helpful resources.`);
+            }}
+          />
+        )}
       </section>
 
       <aside className="flex min-w-0 flex-col gap-4">
@@ -221,7 +238,7 @@ export default function Planner() {
               id="chat"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="e.g. Busy Tue 6pm-9pm"
+              placeholder="e.g. I want to practice making croissants"
               className="min-w-0 flex-1 rounded-lg border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
             />
             <button disabled={busy || !input.trim()} className="rounded-lg bg-accent px-3 text-sm font-medium text-accent-ink disabled:opacity-50">Send</button>

@@ -26,6 +26,19 @@ export interface FixedEvent {
   locked: boolean; // locked events can never be moved by the engine
 }
 
+export interface Resource {
+  kind: "youtube" | "web";
+  label: string; // what the link is for, e.g. "Lamination technique"
+  query: string; // search query; we link to search results, never to model-invented URLs
+}
+
+export interface PlanStep {
+  title: string;
+  detail: string;
+  minutes: number;
+  resources: Resource[];
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -34,6 +47,7 @@ export interface Task {
   dueMin: number; // minute of that day the deadline falls on
   importance: Importance;
   categories: Category[];
+  plan?: PlanStep[]; // optional step-by-step breakdown shown in the session detail view
 }
 
 export interface Profile {

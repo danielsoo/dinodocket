@@ -3,6 +3,7 @@ import { schedule, dueLabel } from "./engine/scheduler";
 import { sanitize } from "./engine/strategy";
 import { DAY_NAMES, type Category, type FixedEvent, type Importance, type Instance, type Schedule, type Strategy, type Task } from "./engine/types";
 import { DEFAULT_STRATEGY } from "./demo";
+import { sanitizePlan } from "./steps";
 
 const IMPS: Importance[] = ["essential", "high", "normal", "flexible"];
 const CATS: Category[] = ["deadline", "ongoing", "aspiration", "priority"];
@@ -40,6 +41,7 @@ export function sanitizeInstance(raw: unknown): Instance {
     dueMin: snap(num(t.dueMin, 30, 1440, 1410)),
     importance: IMPS.includes(t.importance as Importance) ? (t.importance as Importance) : "normal",
     categories: (Array.isArray(t.categories) ? t.categories : []).filter((c): c is Category => CATS.includes(c as Category)),
+    plan: sanitizePlan(t.plan),
   }));
   return {
     id: str(r.id, "user"),
