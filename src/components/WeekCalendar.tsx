@@ -3,6 +3,7 @@
 import { DAY_NAMES, type FixedEvent, type Instance, type Session } from "@/lib/engine/types";
 import { fmtTime } from "@/lib/engine/scheduler";
 import { addDays, sameDay } from "@/lib/dates";
+import { pieceKey } from "@/lib/progress";
 
 const PX = 28; // pixels per 30 minutes (a 30-min block must fit one readable line)
 
@@ -33,6 +34,8 @@ export default function WeekCalendar({
   weekStart = null,
   now = null,
   showPlan = true,
+  done,
+  onToggleDone,
 }: {
   instance: Instance;
   sessions: Session[];
@@ -40,6 +43,8 @@ export default function WeekCalendar({
   weekStart?: Date | null; // Monday this template week is pinned to (null until the client clock is known)
   now?: Date | null;
   showPlan?: boolean; // false for weeks other than the planned one: only recurring fixed events are drawn
+  done?: Set<string>; // piece keys the user checked off
+  onToggleDone?: (pieces: Session[]) => void;
   onSelect?: (s: Session) => void;
   onSelectEvent?: (e: FixedEvent) => void;
   onCreate?: (day: number, minute: number) => void;
@@ -155,25 +160,56 @@ export default function WeekCalendar({
                 const c = taskColor(instance, b.taskId);
                 const h = y(b.end) - y(b.start);
                 const roomy = h >= 2 * PX;
+                const pieces = sessions.filter((x) => x.taskId === b.taskId && x.day === b.day && x.start >= b.start && x.end <= b.end);
+                const checkable = !proposed && !!onToggleDone;
+                const isDone = checkable && !!done && pieces.every((x) => done.has(pieceKey(x)));
                 return (
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => onSelect?.(b.first)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === "Enter" || ev.key === " ") {
+                        ev.preventDefault();
+                        onSelect?.(b.first);
+                      }
+                    }}
                     key={`${b.taskId}-${b.day}-${b.start}`}
-                    className={`absolute inset-x-1 overflow-hidden rounded-lg px-2 text-left leading-tight shadow-sm transition hover:-translate-y-px hover:shadow-md focus-visible:outline-2 focus-visible:outline-accent ${roomy ? "py-1" : "flex items-center"}`}
+                    className={`group absolute inset-x-1 cursor-pointer overflow-hidden rounded-lg px-2 text-left leading-tight shadow-sm transition hover:-translate-y-px hover:shadow-md focus-visible:outline-2 focus-visible:outline-accent ${roomy ? "py-1" : "flex items-center"} ${checkable ? "pr-6" : ""} ${isDone ? "opacity-60" : ""}`}
                     style={{
                       top: y(b.start) + 1,
                       height: h - 2,
-                      background: `color-mix(in srgb, ${c} ${proposed ? 12 : 18}%, var(--panel))`,
+                      background: `color-mix(in srgb, ${c} ${proposed || isDone ? 10 : 18}%, var(--panel))`,
                       boxShadow: `inset 3px 0 0 ${c}`,
                     }}
-                    title={`${t?.title ?? b.taskId} ${fmtTime(b.start)}-${fmtTime(b.end)}${proposed ? " (proposed)" : ""}`}
+                    title={`${t?.title ?? b.taskId} ${fmtTime(b.start)}-${fmtTime(b.end)}${proposed ? " (proposed)" : isDone ? " (done)" : ""}`}
                   >
-                    <span className={`block text-[11px] font-bold ${roomy ? "line-clamp-2" : "truncate"}`} style={{ color: `color-mix(in srgb, ${c} 70%, var(--ink))` }}>
+                    <span className={`block text-[11px] font-bold ${roomy ? "line-clamp-2" : "truncate"} ${isDone ? "line-through" : ""}`} style={{ color: `color-mix(in srgb, ${c} 70%, var(--ink))` }}>
                       {t?.title ?? b.taskId}
                     </span>
                     {roomy && <span className="block truncate text-[10px] text-muted">{span(b.start, b.end)}</span>}
-                  </button>
+                    {checkable && (
+                      <button
+                        type="button"
+                        aria-label={isDone ? "Mark not done" : "Mark done"}
+                        aria-pressed={isDone}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          onToggleDone(pieces);
+                        }}
+                        className={`absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full border-2 transition ${
+                          isDone ? "border-transparent text-white" : "border-current bg-panel opacity-60 hover:opacity-100 group-hover:opacity-100"
+                        }`}
+                        style={{ color: isDone ? undefined : c, background: isDone ? c : undefined }}
+                      >
+                        {isDone && (
+                          <svg width="9" height="9" viewBox="0 0 10 10" fill="none" aria-hidden>
+                            <path d="M2 5.2l2 2L8 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 );
               })}
 

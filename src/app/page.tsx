@@ -6,6 +6,8 @@ import { taskColor } from "@/components/WeekCalendar";
 import PlannerCalendar from "@/components/PlannerCalendar";
 import { MONTHS_SHORT, defaultPlanWeek, fromIso, toIso } from "@/lib/dates";
 import SessionDetail from "@/components/SessionDetail";
+import DinoEgg from "@/components/DinoEgg";
+import { blockPieces, pieceKey, weekProgress } from "@/lib/progress";
 import { EventEditor } from "@/components/Editors";
 import { SWATCHES, addGroup, allGroups, assignGroup, awakeMinutes, deleteGroup, freeColor, renameGroup, setGroupColor, weekStats } from "@/lib/groups";
 import { DEMO, DEFAULT_STRATEGY } from "@/lib/demo";
@@ -118,6 +120,7 @@ export default function Planner() {
   const [editEvent, setEditEvent] = useState<{ event: FixedEvent; isNew: boolean } | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
   const [planWeek, setPlanWeek] = useState<Date | null>(null); // Monday the template week is pinned to
+  const [doneByWeek, setDoneByWeek] = useState<Record<string, string[]>>({}); // checked-off pieces, per planned week
   const [sync, setSync] = useState<"off" | "loading" | "saving" | "saved" | "error">("off");
   const [copied, setCopied] = useState(false);
   const [account, setAccount] = useState(false);
@@ -130,6 +133,7 @@ export default function Planner() {
     setApproved(load<Schedule | null>("dinodocket.v3.approved", null));
     setStrategy(load("dinodocket.strategy", DEFAULT_STRATEGY));
     setPlanWeek(fromIso(load<string | null>("dinodocket.planWeek", null)) ?? defaultPlanWeek(new Date()));
+    setDoneByWeek(load<Record<string, string[]>>("dinodocket.done", {}));
     const answers = loadAnswers();
     if (answers) {
       // Show that the setup questions were actually used.
@@ -190,6 +194,9 @@ export default function Planner() {
   useEffect(() => {
     if (ready && planWeek) save("dinodocket.planWeek", toIso(planWeek));
   }, [planWeek, ready]);
+  useEffect(() => {
+    if (ready) save("dinodocket.done", doneByWeek);
+  }, [doneByWeek, ready]);
   useEffect(() => {
     if (!ready) return;
     save("dinodocket.v3.instance", instance);
@@ -367,6 +374,21 @@ export default function Planner() {
     };
   }, [proposal, approved]);
   const notices = useMemo(() => computeNotices(shownInst, shownSched), [shownInst, shownSched]);
+
+  // Egg progress: share of the approved plan's work the user checked off this week.
+  const weekKey = planWeek ? toIso(planWeek) : "";
+  const done = useMemo(() => new Set(doneByWeek[weekKey] ?? []), [doneByWeek, weekKey]);
+  const progress = useMemo(() => weekProgress(approved?.sessions ?? [], done), [approved, done]);
+  function toggleDone(pieces: Session[]) {
+    if (!weekKey) return;
+    setDoneByWeek((all) => {
+      const cur = new Set(all[weekKey] ?? []);
+      const allDone = pieces.every((x) => cur.has(pieceKey(x)));
+      pieces.forEach((x) => (allDone ? cur.delete(pieceKey(x)) : cur.add(pieceKey(x))));
+      return { ...all, [weekKey]: [...cur] };
+    });
+  }
+  const selectedPieces = selected && approved && !proposal ? blockPieces(approved.sessions, selected) : null;
   const placed = (id: string) => shownSessions.filter((s) => s.taskId === id).reduce((a, s) => a + s.end - s.start, 0);
   const status = proposal ? "Proposal" : approved ? "Approved" : "Draft";
   const warnings = proposal?.explanation.filter((l) => l.startsWith("⚠")) ?? [];
@@ -494,6 +516,8 @@ export default function Planner() {
           proposed={!!proposal}
           planWeek={planWeek}
           onPlanWeekChange={setPlanWeek}
+          done={done}
+          onToggleDone={approved && !proposal ? toggleDone : undefined}
           onSelect={setSelected}
           onSelectEvent={(e) => setEditEvent({ event: e, isNew: false })}
           onCreate={(day, minute) =>
@@ -525,11 +549,14 @@ export default function Planner() {
             }}
             onSaveTask={saveTask}
             onDeleteTask={deleteTask}
+            isDone={!!selectedPieces && selectedPieces.every((x) => done.has(pieceKey(x)))}
+            onToggleDone={selectedPieces ? () => toggleDone(selectedPieces) : undefined}
           />
         )}
       </section>
 
       <aside className="flex min-w-0 flex-col gap-4">
+        <EggCard approved={!!approved} finished={progress.finished} total={progress.total} ratio={progress.ratio} />
         <div className="card flex h-[460px] flex-col overflow-hidden">
           <div className="flex items-center gap-2.5 border-b border-line bg-deep/[0.04] px-4 py-3">
             <Image src="/logo-160.png" alt="" width={32} height={32} />
@@ -844,6 +871,46 @@ function TaskList({ instance, placedFn, onRemove, onAdd }: { instance: Instance;
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+function EggCard({ approved, finished, total, ratio }: { approved: boolean; finished: number; total: number; ratio: number }) {
+  const h = (m: number) => `${Math.round((m / 60) * 10) / 10}h`;
+  const pct = Math.round(ratio * 100);
+  const stage = !approved
+    ? { title: "An egg is waiting", sub: "Approve a plan, then check off blocks as you finish them." }
+    : ratio >= 1
+      ? { title: "Your dino hatched!", sub: "Every planned block this week is done." }
+      : ratio >= 0.75
+        ? { title: "Almost out!", sub: "The shell is breaking. Just a few more blocks." }
+        : ratio >= 0.5
+          ? { title: "It's cracking", sub: "Halfway there. Keep checking off blocks." }
+          : ratio > 0
+            ? { title: "Something's moving", sub: "Each block you finish shakes it harder." }
+            : { title: "A quiet egg", sub: "Check off a block on the calendar to wake it up." };
+  return (
+    <div className="card flex items-center gap-4 p-4">
+      <div className="shrink-0 rounded-2xl bg-bg p-1">
+        <DinoEgg progress={approved ? ratio : 0} size={96} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="font-display text-base font-semibold leading-tight">{stage.title}</div>
+        <p className="mt-0.5 text-xs text-muted">{stage.sub}</p>
+        {approved && total > 0 && (
+          <>
+            <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-line" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Week progress">
+              <div className={`h-full rounded-full transition-all duration-500 ${ratio >= 1 ? "bg-ok" : "bg-accent"}`} style={{ width: `${pct}%` }} />
+            </div>
+            <div className="mt-1 flex justify-between text-[11px] font-semibold text-muted">
+              <span>
+                {h(finished)} of {h(total)} done
+              </span>
+              <span>{pct}%</span>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

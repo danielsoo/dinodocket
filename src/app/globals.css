@@ -105,3 +105,19 @@ h1, h2, h3, .font-display {
   );
 }
 }
+
+/* Dino egg: cracked frames rock side to side, harder as the week fills up. */
+@keyframes egg-rock {
+  0%, 100% { transform: rotate(0deg); }
+  15% { transform: rotate(calc(var(--rock, 6deg) * -1)); }
+  35% { transform: rotate(var(--rock, 6deg)); }
+  55% { transform: rotate(calc(var(--rock, 6deg) * -0.6)); }
+  75% { transform: rotate(calc(var(--rock, 6deg) * 0.4)); }
+}
+.egg-rock {
+  animation: egg-rock 0.9s ease-in-out;
+  transform-origin: 50% 90%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .egg-rock { animation: none; }
+}

@@ -31,6 +31,8 @@ export default function PlannerCalendar({
   onSelect,
   onSelectEvent,
   onCreate,
+  done,
+  onToggleDone,
 }: {
   instance: Instance;
   sessions: Session[];
@@ -40,6 +42,8 @@ export default function PlannerCalendar({
   onSelect?: (s: Session) => void;
   onSelectEvent?: (e: FixedEvent) => void;
   onCreate?: (day: number, minute: number) => void;
+  done?: Set<string>;
+  onToggleDone?: (pieces: Session[]) => void;
 }) {
   const [view, setView] = useState<View>("week");
   const [viewWeek, setViewWeek] = useState<Date | null>(null);
@@ -138,6 +142,8 @@ export default function PlannerCalendar({
           onSelect={onSelect}
           onSelectEvent={onSelectEvent}
           onCreate={onCreate}
+          done={done}
+          onToggleDone={onToggleDone}
         />
       ) : (
         month && <MonthView instance={instance} sessions={sessions} month={month} planWeek={planWeek} now={now} onOpenDay={openWeek} />

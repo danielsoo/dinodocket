@@ -15,6 +15,8 @@ export default function SessionDetail({
   onBreakDown,
   onSaveTask,
   onDeleteTask,
+  isDone,
+  onToggleDone,
 }: {
   instance: Instance;
   sessions: Session[];
@@ -23,6 +25,8 @@ export default function SessionDetail({
   onBreakDown: (title: string) => void;
   onSaveTask: (t: Task) => void;
   onDeleteTask: (id: string) => void;
+  isDone?: boolean;
+  onToggleDone?: () => void;
 }) {
   const task = instance.tasks.find((t) => t.id === session.taskId);
   const [editing, setEditing] = useState(false);
@@ -60,6 +64,15 @@ export default function SessionDetail({
               </p>
             </div>
             <div className="flex shrink-0 gap-1">
+              {onToggleDone && (
+                <button
+                  onClick={onToggleDone}
+                  aria-pressed={!!isDone}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-bold ${isDone ? "bg-ok text-white" : "border border-ok text-ok hover:bg-ok/10"}`}
+                >
+                  {isDone ? "✓ Done" : "Mark done"}
+                </button>
+              )}
               <button onClick={() => setEditing(!editing)} className="rounded-lg border border-line px-2.5 py-1 text-xs font-semibold hover:bg-fixed">{editing ? "Done" : "Edit task"}</button>
               <button onClick={onClose} className="rounded-md px-2 py-1 text-muted hover:bg-fixed hover:text-ink" aria-label="Close">✕</button>
             </div>
