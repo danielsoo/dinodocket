@@ -8,6 +8,8 @@ import { sanitizePlan } from "./steps";
 const IMPS: Importance[] = ["essential", "high", "normal", "flexible"];
 const CATS: Category[] = ["deadline", "ongoing", "aspiration", "priority"];
 const KINDS: FixedEvent["kind"][] = ["class", "work", "club", "event", "personal", "meeting"];
+const safeColor = (x: unknown) => (typeof x === "string" && /^#[0-9a-f]{6}$/i.test(x) ? x : undefined);
+const safeGroup = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim().slice(0, 24) : undefined);
 const safeLink = (x: unknown) => (typeof x === "string" && /^https?:\/\/\S+$/i.test(x.trim()) ? x.trim().slice(0, 300) : undefined);
 const snap = (m: number) => Math.round(m / 30) * 30;
 const num = (x: unknown, lo: number, hi: number, d: number) => {
@@ -35,6 +37,8 @@ export function sanitizeInstance(raw: unknown): Instance {
       link: safeLink(e.link),
       location: typeof e.location === "string" && e.location.trim() ? e.location.trim().slice(0, 80) : undefined,
       with: typeof e.with === "string" && e.with.trim() ? e.with.trim().slice(0, 80) : undefined,
+      group: safeGroup(e.group),
+      color: safeColor(e.color),
     };
   });
   const tasks: Task[] = (Array.isArray(r.tasks) ? r.tasks : []).slice(0, 40).map((t: Record<string, unknown>, i) => ({
@@ -46,6 +50,8 @@ export function sanitizeInstance(raw: unknown): Instance {
     importance: IMPS.includes(t.importance as Importance) ? (t.importance as Importance) : "normal",
     categories: (Array.isArray(t.categories) ? t.categories : []).filter((c): c is Category => CATS.includes(c as Category)),
     plan: sanitizePlan(t.plan),
+    group: safeGroup(t.group),
+    color: safeColor(t.color),
   }));
   return {
     id: str(r.id, "user"),
@@ -60,6 +66,7 @@ export function sanitizeInstance(raw: unknown): Instance {
     },
     fixed,
     tasks,
+    groups: (Array.isArray(r.groups) ? r.groups : []).map(safeGroup).filter((g): g is string => !!g).slice(0, 12),
   };
 }
 

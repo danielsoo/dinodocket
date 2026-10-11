@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
-import { DAY_NAMES, type Instance, type Session } from "@/lib/engine/types";
+import { useEffect, useState } from "react";
+import { DAY_NAMES, type Instance, type Session, type Task } from "@/lib/engine/types";
+import { TaskEditor } from "./Editors";
 import { fmtTime } from "@/lib/engine/scheduler";
 import { resourceUrl, stepsForSession } from "@/lib/steps";
 import { taskColor } from "./WeekCalendar";
@@ -12,14 +13,19 @@ export default function SessionDetail({
   session,
   onClose,
   onBreakDown,
+  onSaveTask,
+  onDeleteTask,
 }: {
   instance: Instance;
   sessions: Session[];
   session: Session;
   onClose: () => void;
   onBreakDown: (title: string) => void;
+  onSaveTask: (t: Task) => void;
+  onDeleteTask: (id: string) => void;
 }) {
   const task = instance.tasks.find((t) => t.id === session.taskId);
+  const [editing, setEditing] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -53,9 +59,17 @@ export default function SessionDetail({
                 {task.importance} · due {DAY_NAMES[task.dueDay]} {fmtTime(task.dueMin)} · {(task.minutes / 60).toFixed(1)}h total
               </p>
             </div>
-            <button onClick={onClose} className="rounded-md px-2 py-1 text-muted hover:bg-fixed hover:text-ink" aria-label="Close">✕</button>
+            <div className="flex shrink-0 gap-1">
+              <button onClick={() => setEditing(!editing)} className="rounded-lg border border-line px-2.5 py-1 text-xs font-semibold hover:bg-fixed">{editing ? "Done" : "Edit task"}</button>
+              <button onClick={onClose} className="rounded-md px-2 py-1 text-muted hover:bg-fixed hover:text-ink" aria-label="Close">✕</button>
+            </div>
           </div>
         </div>
+        {editing && (
+          <div className="border-b border-line bg-bg/60 p-5">
+            <TaskEditor instance={instance} task={task} onSave={(t) => { onSaveTask(t); setEditing(false); }} onDelete={onDeleteTask} />
+          </div>
+        )}
 
         {task.plan?.length ? (
           <div className="space-y-5 p-5">

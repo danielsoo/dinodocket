@@ -27,6 +27,8 @@ export interface FixedEvent {
   link?: string; // video call link, if any
   location?: string;
   with?: string; // who the meeting is with
+  group?: string; // for weekly stats, e.g. "School"
+  color?: string; // user-chosen color (#rrggbb)
 }
 
 export interface Resource {
@@ -51,6 +53,8 @@ export interface Task {
   importance: Importance;
   categories: Category[];
   plan?: PlanStep[]; // optional step-by-step breakdown shown in the session detail view
+  group?: string;
+  color?: string;
 }
 
 export interface Profile {
@@ -69,6 +73,7 @@ export interface Instance {
   profile: Profile;
   fixed: FixedEvent[];
   tasks: Task[];
+  groups?: string[]; // user's custom group names (defaults are always available)
 }
 
 export interface Session {

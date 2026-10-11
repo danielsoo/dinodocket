@@ -4,8 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import WeekCalendar, { taskColor } from "@/components/WeekCalendar";
 import SessionDetail from "@/components/SessionDetail";
+import { EventEditor } from "@/components/Editors";
+import { DEFAULT_GROUPS, weekStats } from "@/lib/groups";
 import { DEMO, DEFAULT_STRATEGY } from "@/lib/demo";
-import { DAY_NAMES, type Importance, type Instance, type Schedule, type Session, type Strategy } from "@/lib/engine/types";
+import { DAY_NAMES, type FixedEvent, type Importance, type Instance, type Schedule, type Session, type Strategy, type Task } from "@/lib/engine/types";
 import { fmtTime } from "@/lib/engine/scheduler";
 import { computeNotices, type Notice } from "@/lib/notice";
 import type { Action } from "@/lib/interpret";
@@ -81,34 +83,45 @@ export default function Planner() {
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState<Session | null>(null);
+  const [editEvent, setEditEvent] = useState<{ event: FixedEvent; isNew: boolean } | null>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Restore saved state after mount (localStorage is browser-only).
     /* eslint-disable react-hooks/set-state-in-effect */
-    setInstance(load("dinodocket.v2.instance", DEMO));
-    setApproved(load<Schedule | null>("dinodocket.v2.approved", null));
+    setInstance(load("dinodocket.v3.instance", DEMO));
+    setApproved(load<Schedule | null>("dinodocket.v3.approved", null));
     setStrategy(load("dinodocket.strategy", DEFAULT_STRATEGY));
     setReady(true);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
   useEffect(() => {
-    if (ready) save("dinodocket.v2.instance", instance);
+    if (ready) save("dinodocket.v3.instance", instance);
   }, [instance, ready]);
   useEffect(() => {
-    if (ready) save("dinodocket.v2.approved", approved);
+    if (ready) save("dinodocket.v3.approved", approved);
   }, [approved, ready]);
   useEffect(() => {
     // Braces matter: newer Chromium returns a Promise from scrollIntoView, and React would call it as a cleanup.
     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, busy]);
 
-  async function propose(next: Instance, label: string) {
+  async function propose(next: Instance, label: string, baseline?: Session[]) {
     const res = await fetch("/api/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instance: next, strategy }) });
     const data = await res.json();
     if (!data.ok) {
       setMessages((m) => [...m, { role: "assistant", content: `The engine rejected that plan: ${data.violations?.[0] ?? "unknown error"}. Nothing was changed.` }]);
       return;
+    }
+    if (baseline) {
+      const a = new Set(baseline.map(key));
+      const b = (data.schedule as Schedule).sessions.map(key);
+      if (b.length === a.size && b.every((k) => a.has(k))) {
+        // The user's edit didn't change the plan, so there is nothing to approve.
+        setInstance(next);
+        setApproved(data.schedule);
+        return;
+      }
     }
     setProposal({ instance: next, schedule: data.schedule, explanation: data.explanation, score: data.score, label });
   }
@@ -141,6 +154,58 @@ export default function Planner() {
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Direct edits by the user apply right away; if timing changed and a plan exists, Dino proposes a re-plan. */
+  async function applyEdit(next: Instance, timingChanged: boolean, label: string) {
+    const withGroups = (inst: Instance) => {
+      const custom = new Set(inst.groups ?? []);
+      [...inst.fixed.map((e) => e.group), ...inst.tasks.map((t) => t.group)].forEach((g) => g && !DEFAULT_GROUPS.includes(g) && custom.add(g));
+      return { ...inst, groups: [...custom] };
+    };
+    const inst = withGroups(next);
+    if (proposal) {
+      await propose(inst, label);
+      return;
+    }
+    setInstance(inst);
+    if (approved && timingChanged) {
+      // Drop approved work that now collides with a commitment, then offer a fresh plan.
+      const clash = (s: Session) => inst.fixed.some((e) => e.day === s.day && s.start < e.end && e.start < s.end);
+      const kept = approved.sessions.filter((s) => !clash(s) && inst.tasks.some((t) => t.id === s.taskId));
+      setApproved({ ...approved, sessions: kept });
+      setBusy(true);
+      try {
+        await propose(inst, label, approved.sessions);
+      } finally {
+        setBusy(false);
+      }
+    }
+  }
+
+  function saveEvent(e: FixedEvent, isNew: boolean) {
+    const base = proposal?.instance ?? instance;
+    const old = base.fixed.find((x) => x.id === e.id);
+    const timing = isNew || !old || old.day !== e.day || old.start !== e.start || old.end !== e.end;
+    const next = { ...base, fixed: isNew ? [...base.fixed, e] : base.fixed.map((x) => (x.id === e.id ? e : x)) };
+    setEditEvent(null);
+    applyEdit(next, timing, isNew ? `Added ${e.title}` : `Edited ${e.title}`);
+  }
+  function deleteEvent(id: string) {
+    const base = proposal?.instance ?? instance;
+    setEditEvent(null);
+    applyEdit({ ...base, fixed: base.fixed.filter((x) => x.id !== id) }, true, "Deleted event");
+  }
+  function saveTask(t: Task) {
+    const base = proposal?.instance ?? instance;
+    const old = base.tasks.find((x) => x.id === t.id);
+    const timing = !old || old.minutes !== t.minutes || old.dueDay !== t.dueDay || old.dueMin !== t.dueMin || old.importance !== t.importance;
+    applyEdit({ ...base, tasks: base.tasks.map((x) => (x.id === t.id ? t : x)) }, timing, `Edited ${t.title}`);
+  }
+  function deleteTask(id: string) {
+    const base = proposal?.instance ?? instance;
+    setSelected(null);
+    applyEdit({ ...base, tasks: base.tasks.filter((x) => x.id !== id) }, true, "Deleted task");
   }
 
   function approve() {
@@ -239,7 +304,29 @@ export default function Planner() {
           </div>
         )}
 
-        <WeekCalendar instance={shownInst} sessions={shownSessions} proposed={!!proposal} onSelect={setSelected} />
+        <WeekCalendar
+          instance={shownInst}
+          sessions={shownSessions}
+          proposed={!!proposal}
+          onSelect={setSelected}
+          onSelectEvent={(e) => setEditEvent({ event: e, isNew: false })}
+          onCreate={(day, minute) =>
+            setEditEvent({ event: { id: `e${Date.now().toString(36)}`, title: "", day, start: minute, end: Math.min(1440, minute + 60), kind: "personal", locked: true }, isNew: true })
+          }
+        />
+        <p className="-mt-2 text-xs text-muted">Tip: click an empty spot to add an event, or any block to edit it.</p>
+        <StatsCard instance={shownInst} schedule={shownSched} />
+        {editEvent && (
+          <EventEditor
+            key={editEvent.event.id}
+            instance={shownInst}
+            event={editEvent.event}
+            isNew={editEvent.isNew}
+            onSave={(e) => saveEvent(e, editEvent.isNew)}
+            onDelete={deleteEvent}
+            onClose={() => setEditEvent(null)}
+          />
+        )}
         {selected && (
           <SessionDetail
             instance={shownInst}
@@ -250,6 +337,8 @@ export default function Planner() {
               setSelected(null);
               send(undefined, `Break "${title}" into step-by-step sessions with helpful resources.`);
             }}
+            onSaveTask={saveTask}
+            onDeleteTask={deleteTask}
           />
         )}
       </section>
@@ -316,6 +405,45 @@ export default function Planner() {
           onAdd={(a) => propose(applyAction(shownInst, a), "Add task")}
         />
       </aside>
+    </div>
+  );
+}
+
+function StatsCard({ instance, schedule }: { instance: Instance; schedule: Schedule | null }) {
+  const stats = weekStats(instance, schedule);
+  const total = stats.reduce((a, s) => a + s.fixed + s.work, 0);
+  const max = Math.max(1, ...stats.map((s) => s.fixed + s.work));
+  const h = (m: number) => `${(m / 60).toFixed(m % 60 ? 1 : 0)}h`;
+  return (
+    <div className="card p-5">
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold">Where your week goes</h2>
+        <span className="text-xs text-muted">
+          {h(total)} scheduled · solid = commitments, striped = planned work{schedule ? "" : " (generate a plan to include work)"}
+        </span>
+      </div>
+      <ul className="space-y-2.5">
+        {stats.map((s) => (
+          <li key={s.group} className="grid grid-cols-[96px_1fr_64px] items-center gap-3 text-sm">
+            <span className="flex items-center gap-1.5 truncate font-semibold">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} aria-hidden />
+              {s.group}
+            </span>
+            <div className="flex h-3.5 overflow-hidden rounded-full bg-fixed" role="img" aria-label={`${s.group}: ${h(s.fixed)} commitments, ${h(s.work)} planned work`}>
+              <div style={{ width: `${(s.fixed / max) * 100}%`, background: s.color }} />
+              <div
+                style={{
+                  width: `${(s.work / max) * 100}%`,
+                  background: `repeating-linear-gradient(135deg, ${s.color} 0 4px, color-mix(in srgb, ${s.color} 45%, var(--panel)) 4px 8px)`,
+                }}
+              />
+            </div>
+            <span className="text-right font-mono text-xs tabular-nums">
+              {h(s.fixed + s.work)} <span className="text-muted">({Math.round(((s.fixed + s.work) / Math.max(1, total)) * 100)}%)</span>
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
