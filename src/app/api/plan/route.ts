@@ -5,8 +5,8 @@ import { currentUser } from "@/lib/session";
 /** Signed-in users get one plan per account; everyone else uses an anonymous per-browser id. */
 async function planKey(id: string) {
   const u = await currentUser();
-  if (u) return `user:${u.uid}`;
-  return ID.test(id) ? id : null;
+  if (u) return { key: `user:${u.uid}`, owner: u.uid };
+  return ID.test(id) ? { key: id, owner: null } : null;
 }
 
 // Anonymous plan sync: each browser gets a random plan id (no login). Anyone with the id can open the plan,
@@ -34,11 +34,11 @@ function sanitizeSchedule(raw: unknown) {
 
 export async function GET(req: Request) {
   if (!dbEnabled()) return Response.json({ enabled: false });
-  const id = await planKey(new URL(req.url).searchParams.get("id") ?? "");
-  if (!id) return Response.json({ error: "bad id" }, { status: 400 });
+  const k = await planKey(new URL(req.url).searchParams.get("id") ?? "");
+  if (!k) return Response.json({ error: "bad id" }, { status: 400 });
   try {
-    const doc = await (await db()).collection<PlanDoc>("plans").findOne({ _id: id });
-    return Response.json({ enabled: true, account: id.startsWith("user:"), plan: doc ? { instance: doc.instance, approved: doc.approved, updatedAt: doc.updatedAt } : null });
+    const doc = await (await db()).collection<PlanDoc>("plans").findOne({ _id: k.key });
+    return Response.json({ enabled: true, account: !!k.owner, owner: k.owner, plan: doc ? { instance: doc.instance, approved: doc.approved, updatedAt: doc.updatedAt } : null });
   } catch (e) {
     return Response.json({ enabled: true, error: e instanceof Error ? e.message : "db error" }, { status: 502 });
   }
@@ -47,8 +47,12 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
   if (!dbEnabled()) return Response.json({ enabled: false });
   const body = await req.json().catch(() => null);
-  const id = await planKey(String(body?.id ?? ""));
-  if (!id) return Response.json({ error: "bad id" }, { status: 400 });
+  const k = await planKey(String(body?.id ?? ""));
+  if (!k) return Response.json({ error: "bad id" }, { status: 400 });
+  // The tab must still belong to the account that is signed in now. If someone signed into a different
+  // account in another tab, this tab's (old) calendar must never overwrite the new account's plan.
+  if ((body?.owner ?? null) !== k.owner) return Response.json({ error: "owner_changed" }, { status: 409 });
+  const id = k.key;
   try {
     const now = new Date();
     await (await db())

@@ -65,7 +65,8 @@ export function useDemoUser(): DemoUser | null | undefined {
 /** Clear this browser's planner data so the next person on a shared laptop starts fresh. */
 export function clearLocalPlan(name?: string) {
   try {
-    ["dinodocket.v3.approved", "dinodocket.v3.savedAt", "dinodocket.onboarding", "dinodocket.strategy", "dinodocket.labRun", "dinodocket.planId"].forEach((k) =>
+    // dinodocket.v3.owner is removed too: the next planner load adopts this blank week for whoever is signed in.
+    ["dinodocket.v3.approved", "dinodocket.v3.savedAt", "dinodocket.v3.owner", "dinodocket.onboarding", "dinodocket.strategy", "dinodocket.labRun", "dinodocket.planId", "dinodocket.done"].forEach((k) =>
       localStorage.removeItem(k),
     );
     localStorage.setItem(

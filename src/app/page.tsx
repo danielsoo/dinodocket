@@ -153,6 +153,10 @@ export default function Planner() {
   const [copied, setCopied] = useState(false);
   const [account, setAccount] = useState(false);
   const chatEnd = useRef<HTMLDivElement>(null);
+  // Which account this tab's calendar belongs to (uid, or null when signed out). Unknown until the server says.
+  const owner = useRef<string | null | undefined>(undefined);
+  const restoring = useRef(true); // loading a saved plan is not an edit: don't bump "last edited"
+
 
   useEffect(() => {
     // Restore saved state after mount (localStorage is browser-only).
@@ -181,12 +185,41 @@ export default function Planner() {
         const r = await fetch(`/api/plan?id=${planIdNow}`);
         const data = await r.json();
         if (!data.enabled) return;
+        // Never show or save one account's calendar under another. The browser's local copy is tied to an owner.
+        const nowOwner: string | null = data.owner ?? null;
+        const localOwner = load<string | null | undefined>("dinodocket.v3.owner", undefined);
+        const foreign = localOwner !== undefined && localOwner !== nowOwner;
+        owner.current = nowOwner;
+        save("dinodocket.v3.owner", nowOwner);
+        if (foreign) {
+          restoring.current = true;
+          const blank: Instance = { id: "me", name: "Me", profile: DEMO.profile, fixed: [], tasks: [] };
+          setInstance(data.plan?.instance ?? (nowOwner ? blank : DEMO));
+          setApproved(data.plan?.approved?.sessions?.length ? data.plan.approved : null);
+          setProposal(null);
+          setHistory([]);
+          setDoneByWeek({});
+          save("dinodocket.v3.savedAt", 0);
+          try {
+            localStorage.removeItem("dinodocket.onboarding");
+            if (nowOwner) {
+              const me = await (await fetch("/api/auth/me")).json();
+              if (me?.answers) localStorage.setItem("dinodocket.onboarding", JSON.stringify(me.answers));
+            }
+          } catch {}
+          setMessages((m) => [...m, { role: "assistant", content: nowOwner ? "Loaded this account's own plan." : "You're signed out, so this is a fresh sample week." }]);
+        }
         setPlanId(planIdNow);
         setAccount(!!data.account);
+        if (foreign) {
+          setSync("saved");
+          return;
+        }
         // Signed in: the account's plan wins if it is newer than this browser's copy (e.g. a new device).
         const localAt = load<number>("dinodocket.v3.savedAt", 0);
         const serverAt = data.plan?.updatedAt ? Date.parse(data.plan.updatedAt) : 0;
         if (!shared && data.account && data.plan?.instance && serverAt > localAt) {
+          restoring.current = true;
           setInstance(data.plan.instance);
           setApproved(data.plan.approved?.sessions?.length ? data.plan.approved : null);
           setMessages((m) => [...m, { role: "assistant", content: "Loaded your plan from your account." }]);
@@ -211,7 +244,16 @@ export default function Planner() {
     setSync("saving");
     const t = setTimeout(async () => {
       try {
-        const r = await fetch("/api/plan", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: planId, instance, approved }) });
+        if (owner.current === undefined) return;
+        const r = await fetch("/api/plan", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: planId, owner: owner.current, instance, approved }) });
+        if (r.status === 409) {
+          // Another tab switched accounts. Stop saving here and reload so this tab shows the right account.
+          setPlanId(null);
+          setSync("error");
+          setMessages((m) => [...m, { role: "assistant", content: "You signed in with a different account in another tab. Reloading to show that account's plan." }]);
+          setTimeout(() => window.location.reload(), 1500);
+          return;
+        }
         setSync(r.ok ? "saved" : "error");
       } catch {
         setSync("error");
@@ -228,7 +270,9 @@ export default function Planner() {
   useEffect(() => {
     if (!ready) return;
     save("dinodocket.v3.instance", instance);
-    save("dinodocket.v3.savedAt", Date.now());
+    if (owner.current !== undefined) save("dinodocket.v3.owner", owner.current);
+    if (restoring.current) restoring.current = false;
+    else save("dinodocket.v3.savedAt", Date.now());
   }, [instance, ready]);
   useEffect(() => {
     if (ready) save("dinodocket.v3.approved", approved);
