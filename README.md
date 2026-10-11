@@ -70,5 +70,5 @@ Without `LUMINAL_API_KEY` the lab uses **mock agents** (random mutation, clearly
 ## Deploy on Vercel
 
 1. Push this repo to GitHub and import it in Vercel (framework: Next.js, no settings needed).
-2. Add env vars: `LUMINAL_API_KEY`, `LUMINAL_BASE_URL`, `LUMINAL_MODEL`, optionally `MONGODB_URI`.
+2. Add env var `LUMINAL_API_KEY` (base URL `https://flash.luminal.cloud/v1` and model `deepseek-ai/DeepSeek-V4.1-Flash` are the defaults; override with `LUMINAL_BASE_URL` / `LUMINAL_MODEL`). Optionally `MONGODB_URI`.
 3. Deploy.

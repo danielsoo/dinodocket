@@ -3,8 +3,8 @@
 
 export const llmConfig = () => ({
   apiKey: process.env.LUMINAL_API_KEY ?? "",
-  baseUrl: (process.env.LUMINAL_BASE_URL ?? "").replace(/\/+$/, ""),
-  model: process.env.LUMINAL_MODEL ?? "deepseek-flash",
+  baseUrl: (process.env.LUMINAL_BASE_URL || "https://flash.luminal.cloud/v1").replace(/\/+$/, ""),
+  model: process.env.LUMINAL_MODEL || "deepseek-ai/DeepSeek-V4.1-Flash",
 });
 
 export const llmEnabled = () => {
