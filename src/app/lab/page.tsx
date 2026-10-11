@@ -76,7 +76,7 @@ export default function Lab() {
   function applyToPlanner() {
     if (!best) return;
     try {
-      localStorage.setItem("chief.strategy", JSON.stringify({ ...best.strategy, name: `Agent-tuned (${best.agent} r${best.round})` }));
+      localStorage.setItem("dinodocket.strategy", JSON.stringify({ ...best.strategy, name: `Agent-tuned (${best.agent} r${best.round})` }));
       setStatus("Saved. The Planner now uses this strategy.");
     } catch {
       setStatus("Couldn't save to this browser's storage.");

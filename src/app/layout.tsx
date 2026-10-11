@@ -4,7 +4,7 @@ import "./globals.css";
 
 
 export const metadata: Metadata = {
-  title: "Chief of Staff",
+  title: "DinoDocket",
   description: "An AI scheduler for college students that proposes realistic weeks and lets you stay in charge.",
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };
@@ -16,7 +16,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <header className="border-b border-line bg-panel">
           <nav className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3">
             <Link href="/" className="font-semibold tracking-tight">
-              Chief<span className="text-accent">.</span>of<span className="text-accent">.</span>Staff
+              <span aria-hidden>🦕 </span>Dino<span className="text-accent">Docket</span>
             </Link>
             <Link href="/" className="text-sm text-muted hover:text-ink">Planner</Link>
             <Link href="/lab" className="text-sm text-muted hover:text-ink">Agent Lab</Link>

@@ -11,5 +11,5 @@ export async function db() {
     clientPromise = import("mongodb").then(({ MongoClient }) => new MongoClient(process.env.MONGODB_URI!).connect());
   }
   const client = await clientPromise;
-  return client.db(process.env.MONGODB_DB ?? "chief");
+  return client.db(process.env.MONGODB_DB ?? "dinodocket");
 }

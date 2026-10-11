@@ -77,7 +77,7 @@ function summarize(inst: Instance) {
   return `Tasks:\n${tasks || "- none"}\nFixed events:\n${ev || "- none"}`;
 }
 
-const SYSTEM = `You are the planning assistant inside a student scheduler ("Chief of Staff").
+const SYSTEM = `You are the planning assistant inside a student scheduler called DinoDocket.
 You do NOT edit the calendar. You translate the student's message into exactly ONE structured action; the scheduling engine builds the plan and the student approves it.
 The planning week is Mon-Sun (days: Mon, Tue, Wed, Thu, Fri, Sat, Sun). Times are "HH:MM" 24h.
 Allowed actions (JSON):

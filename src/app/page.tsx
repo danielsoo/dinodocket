@@ -57,7 +57,7 @@ export default function Planner() {
   const [strategy, setStrategy] = useState<Strategy>(DEFAULT_STRATEGY);
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [messages, setMessages] = useState<Msg[]>([
-    { role: "assistant", content: "Hi! I'm your Chief of Staff. Generate this week's plan, or tell me what changed, like \"I have a CMPSC lab report due Wednesday, about 4 hours\"." },
+    { role: "assistant", content: "Hi! I'm Dino, your DinoDocket planner. Generate this week's plan, or tell me what changed, like \"I have a CMPSC lab report due Wednesday, about 4 hours\"." },
   ]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -67,17 +67,17 @@ export default function Planner() {
   useEffect(() => {
     // Restore saved state after mount (localStorage is browser-only).
     /* eslint-disable react-hooks/set-state-in-effect */
-    setInstance(load("chief.instance", DEMO));
-    setApproved(load<Schedule | null>("chief.approved", null));
-    setStrategy(load("chief.strategy", DEFAULT_STRATEGY));
+    setInstance(load("dinodocket.instance", DEMO));
+    setApproved(load<Schedule | null>("dinodocket.approved", null));
+    setStrategy(load("dinodocket.strategy", DEFAULT_STRATEGY));
     setReady(true);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
   useEffect(() => {
-    if (ready) save("chief.instance", instance);
+    if (ready) save("dinodocket.instance", instance);
   }, [instance, ready]);
   useEffect(() => {
-    if (ready) save("chief.approved", approved);
+    if (ready) save("dinodocket.approved", approved);
   }, [approved, ready]);
   useEffect(() => chatEnd.current?.scrollIntoView({ behavior: "smooth" }), [messages]);
 
@@ -202,7 +202,7 @@ export default function Planner() {
 
       <aside className="flex min-w-0 flex-col gap-4">
         <div className="flex h-[440px] flex-col rounded-xl border border-line bg-panel">
-          <div className="border-b border-line px-4 py-2.5 text-sm font-semibold">Chief of Staff</div>
+          <div className="border-b border-line px-4 py-2.5 text-sm font-semibold">🦕 Dino</div>
           <div className="flex-1 space-y-2 overflow-y-auto p-3 text-sm">
             {messages.map((m, i) => (
               <div key={i} className={m.role === "user" ? "ml-8 rounded-lg bg-accent px-3 py-2 text-accent-ink" : "mr-6 rounded-lg bg-fixed px-3 py-2"}>

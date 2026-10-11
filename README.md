@@ -1,6 +1,6 @@
-# Chief of Staff
+# 🦕 DinoDocket
 
-An AI scheduler for overcommitted college students, plus a team of AI agents that keeps making the scheduler better.
+Your personal chief of staff for the semester. An AI scheduler for overcommitted college students, plus a team of AI agents that keeps making the scheduler better.
 
 Built at **c0mpiled-15 (Penn State, Oct 11 2026)**. Track 1, Challenge A: *Build a Self-Improving Agent Team* (Luminal).
 
