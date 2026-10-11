@@ -17,6 +17,14 @@ function span(a: number, b: number) {
   return x.ap === y.ap ? `${x.t}–${y.t} ${y.ap}` : `${x.t} ${x.ap}–${y.t} ${y.ap}`;
 }
 
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="9" height="9" fill="currentColor" aria-hidden="true">
+      <path d="M8 1.5a3.5 3.5 0 0 0-3.5 3.5v2H4a1.5 1.5 0 0 0-1.5 1.5v5A1.5 1.5 0 0 0 4 15h8a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 12 7h-.5V5A3.5 3.5 0 0 0 8 1.5Zm-2 5.5V5a2 2 0 1 1 4 0v2H6Z" />
+    </svg>
+  );
+}
+
 export const TASK_COLORS = ["#2350e6", "#e0531f", "#0ea5c6", "#7c3aed", "#c98a1a", "#db2777", "#15994a", "#0f766e"];
 
 export function taskColor(inst: Instance, taskId: string) {
@@ -123,28 +131,55 @@ export default function WeekCalendar({
               {instance.fixed.filter((e) => e.day === d).map((e) => {
                 const meeting = e.kind === "meeting";
                 const missing = meeting && !e.link && !e.location;
+                const locked = e.locked !== false;
                 const h = y(e.end) - y(e.start);
+                const roomy = h >= 2 * PX;
                 const accent = e.color ?? (meeting ? "var(--accent)" : "var(--fixed-ink)");
                 return (
                   <button
                     type="button"
                     key={e.id}
                     onClick={() => onSelectEvent?.(e)}
-                    className={`absolute inset-x-1 overflow-hidden rounded-lg px-2 text-left leading-tight text-fixed-ink transition hover:brightness-[0.97] focus-visible:outline-2 focus-visible:outline-accent ${h < 2 * PX ? "flex items-center gap-1" : "py-1"} ${missing ? "ring-1 ring-warn" : e.locked === false ? "border border-dashed border-line" : ""}`}
-                    style={{
-                      top: y(e.start) + 1,
-                      height: Math.max(PX - 2, h - 2),
-                      background: e.color ? `color-mix(in srgb, ${e.color} 14%, var(--panel))` : "var(--fixed-bg)",
-                      boxShadow: `inset 3px 0 0 color-mix(in srgb, ${accent} 55%, transparent)`,
-                    }}
-                    title={`${e.title} (${e.locked === false ? "not locked" : "locked"}) ${fmtTime(e.start)}-${fmtTime(e.end)}${e.location ? ` · ${e.location}` : ""}${missing ? " · no link or location" : ""} · click to edit`}
+                    className={`absolute inset-x-1 overflow-hidden rounded-lg pl-2.5 text-left leading-tight transition hover:brightness-[0.97] focus-visible:outline-2 focus-visible:outline-accent ${locked ? "pr-6 text-fixed-ink" : "pr-2 text-fixed-ink/80"} ${roomy ? "py-1" : "flex items-center gap-1"} ${missing ? "ring-1 ring-warn" : ""}`}
+                    style={
+                      locked
+                        ? {
+                            // Locked: solid, tinted, framed. Reads as "this does not move".
+                            top: y(e.start) + 1,
+                            height: Math.max(PX - 2, h - 2),
+                            background: `color-mix(in srgb, ${accent} 24%, var(--panel))`,
+                            border: `1.5px solid color-mix(in srgb, ${accent} 70%, transparent)`,
+                            boxShadow: `inset 4px 0 0 ${accent}`,
+                          }
+                        : {
+                            // Not locked: see-through and dashed. Reads as "flexible".
+                            top: y(e.start) + 1,
+                            height: Math.max(PX - 2, h - 2),
+                            background: `repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, ${accent} 10%, transparent) 6px 8px), color-mix(in srgb, var(--panel) 70%, transparent)`,
+                            border: `1.5px dashed color-mix(in srgb, ${accent} 55%, transparent)`,
+                          }
+                    }
+                    title={`${e.title} · ${locked ? "Locked: nothing is ever planned over it" : "Not locked: essential work may use this time if the week is full"} · ${fmtTime(e.start)}-${fmtTime(e.end)}${e.location ? ` · ${e.location}` : ""}${missing ? " · no link or location" : ""} · click to edit`}
                   >
+                    {locked && (
+                      <span
+                        aria-label="Locked"
+                        className="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full text-white shadow-sm"
+                        style={{ background: accent === "var(--fixed-ink)" ? "var(--accent)" : accent }}
+                      >
+                        <LockIcon />
+                      </span>
+                    )}
                     <span className="block truncate text-[11px] font-bold">
                       {missing && <span className="text-warn">⚠ </span>}
-                      {e.locked !== false && <span aria-label="locked" className="mr-0.5 text-[9px]">🔒</span>}
                       {e.title}
                     </span>
-                    {h >= 2 * PX && <span className="block truncate text-[10px] opacity-75">{span(e.start, e.end)}</span>}
+                    {roomy && (
+                      <span className="block truncate text-[10px] opacity-75">
+                        {span(e.start, e.end)}
+                        {!locked && " · flexible"}
+                      </span>
+                    )}
                   </button>
                 );
               })}

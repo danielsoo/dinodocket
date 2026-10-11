@@ -545,7 +545,19 @@ export default function Planner() {
             setEditEvent({ event: { id: `e${Date.now().toString(36)}`, title: "", day, start: minute, end: Math.min(1440, minute + 60), kind: "personal", locked: false }, isNew: true })
           }
         />
-        <p className="-mt-2 text-xs text-muted">Tip: click an empty spot to add an event, or any block to edit it.</p>
+        <div className="-mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="relative inline-block h-3.5 w-6 rounded border-[1.5px] border-accent/70 bg-accent/25 shadow-[inset_3px_0_0_var(--accent)]">
+              <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-accent" />
+            </span>
+            <b className="text-ink">Locked</b> never planned over
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-3.5 w-6 rounded border-[1.5px] border-dashed border-fixed-ink/60" />
+            <b className="text-ink">Flexible</b> essential work may use it if the week is full
+          </span>
+          <span>Click an empty spot to add an event, or any block to edit or lock it.</span>
+        </div>
         <StatsCard instance={shownInst} schedule={shownSched} onChange={(next) => applyEdit(next, false, "Updated groups")} />
         {editEvent && (
           <EventEditor
@@ -633,7 +645,9 @@ export default function Planner() {
           onLock={(title) => {
             const n = shownInst.fixed.filter((e) => e.title.trim().toLowerCase() === title.trim().toLowerCase()).length;
             setMessages((m) => [...m, { role: "assistant", content: `Locking "${title}"${n > 1 ? ` (all ${n} this week)` : ""} 🔒. It's top priority now, so I'll always plan around it.` }]);
-            propose(applyAction(shownInst, { type: "update_event", title, locked: true }), `Lock ${title}`, proposal ? undefined : approved?.sessions);
+            const next = applyAction(shownInst, { type: "update_event", title, locked: true });
+            if (!proposal && !approved) setInstance(next); // no plan yet: nothing to re-plan or approve
+            else propose(next, `Lock ${title}`, proposal ? undefined : approved?.sessions);
           }}
         />
 

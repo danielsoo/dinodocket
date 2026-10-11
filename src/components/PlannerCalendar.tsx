@@ -228,8 +228,8 @@ function MonthView({
                     </span>
                   )}
                   {fixed.slice(0, 2).map((e) => (
-                    <span key={e.id} className="truncate text-[10px] text-fixed-ink">
-                      <span className="text-muted">{shortTime(e.start)}</span> {e.title}
+                    <span key={e.id} className={`truncate text-[10px] ${e.locked !== false ? "font-semibold text-fixed-ink" : "italic text-fixed-ink/70"}`}>
+                      <span className="text-muted">{shortTime(e.start)}</span> {e.locked !== false && "🔒 "}{e.title}
                     </span>
                   ))}
                   {extra > 0 && <span className="text-[10px] font-semibold text-muted">+{extra} more</span>}

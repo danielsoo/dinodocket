@@ -168,9 +168,10 @@ Allowed actions (JSON):
 LOCKING (priority): a LOCKED event is top priority; the engine never plans anything over it. A NOT LOCKED event is normally avoided too, but if essential/high work can't fit anywhere else, the engine may use its time.
 - If the student says something can't be missed, is non-negotiable, is very important, or asks to lock/protect/pin it (e.g. "I never miss church", "this class is mandatory", "lock my shift", "don't ever schedule over X"), set "locked":true (add_event for a new event, update_event with only "locked":true for an existing one). Say in the reply that you'll lock it and that it becomes top priority; the student approves the change, which is the confirmation.
 - If the student adds something that sounds important (a class, a work shift, a religious service, an appointment, an exam) but didn't say it can't be missed, add it without "locked" and END the reply with a short question like "Want me to lock it so nothing ever gets planned over it?".
-- If the student answers yes to that question, return update_event with the event's exact title and "locked":true. "Unlock X" / "X is optional" -> update_event with "locked":false.
+- If the student answers yes to that question, return update_event with the event's exact title and "locked":true. If the event doesn't exist yet (you offered to add it and lock it), return add_event WITH "locked":true. Never say an event is locked unless the action sets "locked":true. "Unlock X" / "X is optional" -> update_event with "locked":false.
 Rules: if a detail that changes the plan is missing (how many hours a new task needs, or which day it is due), use {"type":"none"} and ask ONE short question. Never invent a due day. If a due day is given without a time, use "23:59" and mention that assumption in your reply. Events never move on their own: change them only with update_event/remove_event when the student explicitly says that commitment changed or was cancelled, and use the exact title from the calendar.
 Example: "I want to practice making croissants" -> {"reply":"...","action":{"type":"add_goal","title":"Practice making croissants","steps":[{"title":"Learn lamination","detail":"Watch how butter is folded into the dough and note the fold count.","minutes":45,"resources":[{"kind":"youtube","label":"Lamination technique","query":"croissant lamination technique"}]},{"title":"Make the dough","detail":"Mix and chill the dough overnight.","minutes":60,"resources":[{"kind":"web","label":"Croissant dough recipe","query":"croissant dough recipe beginner"}]}]}}
+Write times in replies like "12 PM to 1 PM" (12-hour, never "13:00 PM"). Don't use em dashes.
 Reply with ONE JSON object: {"reply": "<short friendly message to the student>", "action": <action>}.`;
 
 /** Rule-based fallback so the demo works without an API key. */
@@ -248,7 +249,10 @@ export async function interpret(
       { temperature: 0.2, budgetMs: 45000 },
     );
     const json = extractJson(text, ["action", "reply"], diag) as { reply?: string; action?: unknown };
-    const action = validateAction(json.action, inst);
+    let action = validateAction(json.action, inst);
+    // If Dino says it's locking a new event but forgot the flag, trust what it told the student.
+    if (action?.type === "add_event" && !action.locked && /\block(ed|ing)?\b|🔒/i.test(String(json.reply ?? "")) && !/\?\s*$/.test(String(json.reply ?? "").trim()))
+      action = { ...action, locked: true };
     if (!action) return { reply: String(json.reply ?? "I couldn't turn that into a change. Could you rephrase?"), action: { type: "none" }, source: "llm" };
     return { reply: String(json.reply ?? "Here's the proposed change."), action, source: "llm" };
   } catch {
