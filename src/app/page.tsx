@@ -471,7 +471,7 @@ export default function Planner() {
                   <span className="font-display text-base font-semibold">{approved ? "Dino suggests some changes" : "Here's a plan for your week"}</span>
                 </div>
                 <p className="mt-0.5 text-sm text-muted">
-                  {placedMin >= neededMin ? `All ${h1(neededMin)} of work fits.` : `${h1(placedMin)} of ${h1(neededMin)} fits.`}{" "}
+                  {neededMin === 0 ? "No tasks to place yet, just your commitments." : placedMin >= neededMin ? `All ${h1(neededMin)} of work fits.` : `${h1(placedMin)} of ${h1(neededMin)} fits.`}{" "}
                   {approved && diff ? `${h1(diff.added)} added, ${h1(diff.removed)} moved or removed.` : "Nothing is saved until you approve."}
                 </p>
               </div>
