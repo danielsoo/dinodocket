@@ -1,5 +1,6 @@
 import { interpret } from "@/lib/interpret";
 import { sanitizeInstance } from "@/lib/plan";
+import { sanitizePersona } from "@/lib/persona";
 
 export const maxDuration = 120;
 
@@ -12,6 +13,6 @@ export async function POST(req: Request) {
         .filter((m: { role?: string; content?: unknown }) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
         .slice(-6)
     : [];
-  const result = await interpret(message, sanitizeInstance(body?.instance), history);
+  const result = await interpret(message, sanitizeInstance(body?.instance), history, sanitizePersona(body?.persona));
   return Response.json(result);
 }

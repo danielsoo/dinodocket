@@ -194,7 +194,15 @@ export default function Planner() {
     setBusy(true);
     try {
       const base = proposal?.instance ?? instance;
-      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text, instance: base, history }) });
+      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+          message: text,
+          instance: base,
+          history,
+          persona: (() => {
+            const a = loadAnswers();
+            return a ? { profile: toProfile(a), role: a.role, year: a.year, peak: a.peak, workStyle: a.workStyle, commitments: a.commitments, goals: a.goals } : null;
+          })(),
+        }) });
       const data = (await res.json()) as { reply: string; action: Action; source: string };
       setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
       if (data.action?.type === "set_group") {

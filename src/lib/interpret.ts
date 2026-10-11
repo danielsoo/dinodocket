@@ -3,6 +3,7 @@ import { DAY_NAMES, type Importance, type Instance, type PlanStep } from "./engi
 import { fmtTime } from "./engine/scheduler";
 import { genericPlan, sanitizePlan } from "./steps";
 import { allGroups, eventGroup, taskGroup } from "./groups";
+import { personaText, type Persona } from "./persona";
 
 // The AI never edits the calendar. It only returns one of these structured actions,
 // which the server validates and the client turns into a proposal the user must approve.
@@ -170,12 +171,17 @@ function rules(msg: string, inst: Instance): Interpretation {
   };
 }
 
-export async function interpret(message: string, inst: Instance, history: { role: "user" | "assistant"; content: string }[] = []): Promise<Interpretation> {
+export async function interpret(
+  message: string,
+  inst: Instance,
+  history: { role: "user" | "assistant"; content: string }[] = [],
+  persona: Persona | null = null,
+): Promise<Interpretation> {
   if (!llmEnabled()) return rules(message, inst);
   try {
     const { text, diag } = await chat(
       [
-        { role: "system", content: `${SYSTEM}\n\nCurrent week:\n${summarize(inst)}` },
+        { role: "system", content: `${SYSTEM}${persona ? `\n\nAbout this student (from their sign-up answers; use it to tailor estimates, timing and advice): ${personaText(persona)}` : ""}\n\nCurrent week:\n${summarize(inst)}` },
         ...history.slice(-6),
         { role: "user", content: message },
       ],

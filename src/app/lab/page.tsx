@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import type { Candidate } from "@/lib/agents";
+import Link from "next/link";
+import { loadAnswers, summary, toProfile, type Answers } from "@/lib/onboarding";
+
+const personaFrom = (a: Answers) => ({ profile: toProfile(a), role: a.role, year: a.year, peak: a.peak, workStyle: a.workStyle, commitments: a.commitments, goals: a.goals });
 
 type TestResult = { name: string; mean: number; feasibleRate: number; components: Record<string, number> };
 const AGENT_COLORS: Record<string, string> = {
@@ -15,6 +19,16 @@ const COMPONENTS = ["completion", "focusFit", "livable", "breaks", "buffer"] as 
 
 export default function Lab() {
   const [rounds, setRounds] = useState(6);
+  const [answers, setAnswers] = useState<Answers | null>(null);
+  const [forMe, setForMe] = useState(false);
+  useEffect(() => {
+    const a = loadAnswers();
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setAnswers(a);
+    if (a) setForMe(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+  const persona = forMe && answers ? personaFrom(answers) : null;
   const [all, setAll] = useState<Candidate[]>([]);
   const [meta, setMeta] = useState<{ mode: string; model: string | null; trainSize: number; db: boolean } | null>(null);
   const [test, setTest] = useState<{ baseline: TestResult; best: TestResult; testSize: number } | null>(null);
@@ -69,7 +83,7 @@ export default function Lab() {
     setAll([]);
     try {
       setStatus("Scoring baseline on training weeks…");
-      const init = await (await fetch("/api/lab/init", { method: "POST" })).json();
+      const init = await (await fetch("/api/lab/init", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ persona }) })).json();
       setMeta({ mode: init.mode, model: init.model, trainSize: init.trainSize, db: init.db });
       let pool: Candidate[] = [init.baseline];
       setAll(pool);
@@ -86,7 +100,7 @@ export default function Lab() {
           while (queue.length) {
             const agent = queue.shift()!;
             try {
-              const res = await fetch("/api/lab/round", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ round: r, elites, recent, agent }) });
+              const res = await fetch("/api/lab/round", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ round: r, elites, recent, agent, persona }) });
               const data = await res.json();
               if (res.ok && Array.isArray(data.candidates)) {
                 cands.push(...data.candidates);
@@ -106,7 +120,7 @@ export default function Lab() {
       }
       setStatus("Testing baseline and best strategy on held-out weeks…");
       const top = [...pool].sort((a, b) => b.eval.mean - a.eval.mean)[0];
-      const t = await (await fetch("/api/lab/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ strategies: [pool[0].strategy, top.strategy] }) })).json();
+      const t = await (await fetch("/api/lab/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ strategies: [pool[0].strategy, top.strategy], persona }) })).json();
       const testRes = { baseline: t.results[0], best: t.results[1], testSize: t.testSize };
       setTest(testRes);
       persist({ all: pool, meta: metaNow, test: testRes, rounds });
@@ -165,8 +179,21 @@ export default function Lab() {
             failures, propose new strategies, and the engine scores them on {meta?.trainSize ?? 30} synthetic student weeks.
             The final strategy is then tested on 15 weeks the agents never saw.
           </p>
+          {forMe && answers ? (
+            <p className="mt-2 max-w-2xl rounded-xl border border-claw/60 bg-claw/10 px-3 py-2 text-sm">
+              <b>Tuning for you.</b> Every training and test week uses your sign-up answers, and the agents are told your habits. {summary(answers)}
+            </p>
+          ) : !answers ? (
+            <p className="mt-2 text-xs text-muted">
+              Want a strategy tuned to you? <Link href="/signup" className="font-semibold text-accent hover:underline">Answer the sign-up questions</Link> and pick &quot;Just me&quot;.
+            </p>
+          ) : null}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-xl border border-line bg-panel p-0.5 text-sm" role="radiogroup" aria-label="Optimize for">
+            <button role="radio" aria-checked={!forMe} onClick={() => setForMe(false)} disabled={running} className={`rounded-lg px-3 py-1.5 font-semibold ${!forMe ? "bg-accent text-white" : "text-muted hover:text-ink"}`}>Everyone</button>
+            <button role="radio" aria-checked={forMe} onClick={() => answers && setForMe(true)} disabled={running || !answers} title={answers ? "Train on weeks that use your sign-up answers" : "Answer the sign-up questions first"} className={`rounded-lg px-3 py-1.5 font-semibold disabled:opacity-40 ${forMe ? "bg-accent text-white" : "text-muted hover:text-ink"}`}>Just me</button>
+          </div>
           <label className="text-sm text-muted">
             Rounds{" "}
             <input type="number" min={1} max={15} value={rounds} onChange={(e) => setRounds(Math.max(1, Math.min(15, Number(e.target.value))))} className="w-16 rounded-md border border-line bg-panel px-2 py-1.5 text-ink" />

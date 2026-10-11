@@ -3,6 +3,7 @@ import { evaluateStrategy, WEIGHTS, type EvalResult } from "./engine/evaluate";
 import { generateInstance, TRAIN_SEEDS } from "./engine/generator";
 import { mutate, sanitize } from "./engine/strategy";
 import type { Strategy } from "./engine/types";
+import { personaKey, personaText, personalize, type Persona } from "./persona";
 
 export interface Candidate {
   agent: string;
@@ -46,7 +47,14 @@ export const AGENTS = [
 ] as const;
 
 let trainCache: ReturnType<typeof generateInstance>[] | null = null;
-export const trainSet = () => (trainCache ??= TRAIN_SEEDS.map(generateInstance));
+const personalCache = new Map<string, ReturnType<typeof generateInstance>[]>();
+export const trainSet = (persona: Persona | null = null) => {
+  const base = (trainCache ??= TRAIN_SEEDS.map(generateInstance));
+  if (!persona) return base;
+  const k = personaKey(persona);
+  if (!personalCache.has(k)) personalCache.set(k, personalize(base, persona));
+  return personalCache.get(k)!;
+};
 
 const SCHEMA = `{
   "name": string,
@@ -82,14 +90,16 @@ export interface RoundInput {
   elites: Candidate[]; // best strategies so far, best first
   recent: { agent: string; mean: number; rationale: string }[]; // what was tried last round
   agent?: number; // run only this agent (one serverless call per agent gets its own time budget)
+  persona?: Persona | null; // optimize for one student's answers instead of everyone
 }
 
 // Limit simultaneous LLM calls: the shared hackathon endpoint returns 503 when overloaded.
 const LLM_CONCURRENCY = 2;
 const ROUND_BUDGET_MS = 110000; // the round route has maxDuration 120s
 
-export async function runRound({ round, elites, recent, agent }: RoundInput): Promise<Candidate[]> {
-  const train = trainSet();
+export async function runRound({ round, elites, recent, agent, persona = null }: RoundInput): Promise<Candidate[]> {
+  const train = trainSet(persona);
+  const who = personaText(persona);
   const best = elites[0];
   const useLlm = llmEnabled();
   const roundDeadline = Date.now() + ROUND_BUDGET_MS;
@@ -115,7 +125,7 @@ ${elites.slice(0, 3).map(describe).join("\n\n")}
 Last round's attempts:
 ${recent.length ? recent.map((r) => `- ${r.agent}: ${r.mean.toFixed(2)} (${r.rationale})`).join("\n") : "- none yet"}
 
-Propose ONE new strategy that you expect to beat ${best.eval.mean.toFixed(2)} on unseen student weeks. Do not copy an existing strategy exactly.`;
+${who ? `You are tuning the scheduler for ONE specific student. Every training week uses their rhythm: ${who}. Use this to choose session length, daily cap, and how early to start work.\n\n` : ""}Propose ONE new strategy that you expect to beat ${best.eval.mean.toFixed(2)} on unseen student weeks. Do not copy an existing strategy exactly.`;
           await acquire();
           let res;
           try {

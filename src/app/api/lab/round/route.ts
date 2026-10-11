@@ -1,4 +1,5 @@
 import { runRound, type RoundInput } from "@/lib/agents";
+import { sanitizePersona } from "@/lib/persona";
 
 export const maxDuration = 120;
 
@@ -12,6 +13,7 @@ export async function POST(req: Request) {
     elites: body.elites.slice(0, 5),
     recent: Array.isArray(body.recent) ? body.recent.slice(0, 8) : [],
     agent: typeof body.agent === "number" ? body.agent : undefined,
+    persona: sanitizePersona((body as { persona?: unknown }).persona),
   });
   return Response.json({ candidates });
 }
