@@ -51,8 +51,8 @@ export default function AuthForm({ mode }: { mode: Mode }) {
     if (busy) return;
     setBusy(true);
     demoLogin(email, mode === "signup" ? name : undefined);
-    // short pause so the button state is visible, then into the planner
-    setTimeout(() => router.push("/"), 450);
+    // short pause so the button state is visible; new accounts answer the setup questions first
+    setTimeout(() => router.push(mode === "signup" ? "/onboarding" : "/"), 450);
   };
 
   return (

@@ -7,6 +7,7 @@ import SessionDetail from "@/components/SessionDetail";
 import { EventEditor } from "@/components/Editors";
 import { SWATCHES, addGroup, allGroups, assignGroup, awakeMinutes, deleteGroup, freeColor, renameGroup, setGroupColor, weekStats } from "@/lib/groups";
 import { DEMO, DEFAULT_STRATEGY } from "@/lib/demo";
+import { loadAnswers, summary, toProfile } from "@/lib/onboarding";
 import { DAY_NAMES, type FixedEvent, type Importance, type Instance, type Schedule, type Session, type Strategy, type Task } from "@/lib/engine/types";
 import { fmtTime } from "@/lib/engine/scheduler";
 import { computeNotices, type Notice } from "@/lib/notice";
@@ -92,6 +93,11 @@ export default function Planner() {
     setInstance(load("dinodocket.v3.instance", DEMO));
     setApproved(load<Schedule | null>("dinodocket.v3.approved", null));
     setStrategy(load("dinodocket.strategy", DEFAULT_STRATEGY));
+    const answers = loadAnswers();
+    if (answers) {
+      // Show that the setup questions were actually used.
+      setMessages((m) => [...m, { role: "assistant", content: `Set up from your answers: ${summary(answers)} Hit Generate plan to see it.` }]);
+    }
     setReady(true);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
@@ -220,7 +226,9 @@ export default function Planner() {
     setMessages((m) => [...m, { role: "assistant", content: "Discarded. Your plan is unchanged. Want me to try a different trade-off?" }]);
   }
   function reset() {
-    setInstance(DEMO);
+    // Keep the user's personalized hours and limits when resetting the demo week.
+    const answers = loadAnswers();
+    setInstance(answers ? { ...DEMO, profile: toProfile(answers) } : DEMO);
     setApproved(null);
     setProposal(null);
   }
