@@ -69,7 +69,7 @@ The scheduler is a greedy constructive algorithm controlled by a strategy JSON:
 Hard constraints (overlaps, deadlines, awake hours) are enforced by the engine; an invalid schedule scores 0.
 Score per student week (0-100) = ${WEIGHTS.completion}*completion + completion*(${WEIGHTS.focusFit}*focusFit + ${WEIGHTS.livable}*livable + ${WEIGHTS.breaks}*breaks + ${WEIGHTS.buffer}*buffer).
 Quality points are multiplied by completion, so dropping required work never pays. Many weeks are overloaded, so the challenge is fitting the work while keeping days livable.
-Reply with ONE JSON object: {"rationale": "<one or two sentences>", "strategy": <strategy>}. Strategy schema:
+Think briefly. Your final answer must be ONLY one JSON object, no markdown, no extra text: {"rationale": "<one or two sentences>", "strategy": <strategy>}. Strategy schema:
 ${SCHEMA}`;
 
 function describe(c: Pick<Candidate, "agent" | "round" | "strategy" | "eval">) {
@@ -105,8 +105,8 @@ Last round's attempts:
 ${recent.length ? recent.map((r) => `- ${r.agent}: ${r.mean.toFixed(2)} (${r.rationale})`).join("\n") : "- none yet"}
 
 Propose ONE new strategy that you expect to beat ${best.eval.mean.toFixed(2)} on unseen student weeks. Do not copy an existing strategy exactly.`;
-          const text = await chat([{ role: "system", content: SYSTEM }, { role: "user", content: user }], { temperature: a.id === "explorer" ? 1.0 : 0.6 });
-          const json = extractJson(text) as { rationale?: string; strategy?: unknown };
+          const { text, diag } = await chat([{ role: "system", content: SYSTEM }, { role: "user", content: user }], { temperature: a.id === "explorer" ? 1.0 : 0.6 });
+          const json = extractJson(text, ["strategy", "order", "slot"], diag) as { rationale?: string; strategy?: unknown };
           strategy = sanitize(json.strategy ?? json, best.strategy);
           rationale = String(json.rationale ?? "").slice(0, 300);
         } catch (e) {

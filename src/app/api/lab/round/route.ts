@@ -1,6 +1,6 @@
 import { runRound, type RoundInput } from "@/lib/agents";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export async function POST(req: Request) {
   const body = (await req.json()) as RoundInput;

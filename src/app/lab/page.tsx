@@ -213,7 +213,7 @@ export default function Lab() {
                   <td className="px-3 py-2 text-muted">{c.round}</td>
                   <td className="whitespace-nowrap px-3 py-2" style={{ color: AGENT_COLORS[c.agent] }}>{c.agent}{c.source === "fallback" ? " (fallback)" : ""}</td>
                   <td className="px-3 py-2 font-mono">{c.eval.mean.toFixed(2)}</td>
-                  <td className="px-3 py-2 text-muted">{c.rationale}{c.error ? ` [${c.error.slice(0, 80)}]` : ""}</td>
+                  <td className="px-3 py-2 text-muted">{c.rationale}{c.error ? ` [${c.error.slice(0, 220)}]` : ""}</td>
                 </tr>
               ))}
             </tbody>

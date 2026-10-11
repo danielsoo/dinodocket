@@ -122,15 +122,15 @@ function rules(msg: string, inst: Instance): Interpretation {
 export async function interpret(message: string, inst: Instance, history: { role: "user" | "assistant"; content: string }[] = []): Promise<Interpretation> {
   if (!llmEnabled()) return rules(message, inst);
   try {
-    const text = await chat(
+    const { text, diag } = await chat(
       [
         { role: "system", content: `${SYSTEM}\n\nCurrent week:\n${summarize(inst)}` },
         ...history.slice(-6),
         { role: "user", content: message },
       ],
-      { temperature: 0.2, maxTokens: 600, timeoutMs: 30000 },
+      { temperature: 0.2, timeoutMs: 40000 },
     );
-    const json = extractJson(text) as { reply?: string; action?: unknown };
+    const json = extractJson(text, ["action", "reply"], diag) as { reply?: string; action?: unknown };
     const action = validateAction(json.action, inst);
     if (!action) return { reply: String(json.reply ?? "I couldn't turn that into a change. Could you rephrase?"), action: { type: "none" }, source: "llm" };
     return { reply: String(json.reply ?? "Here's the proposed change."), action, source: "llm" };

@@ -17,10 +17,15 @@ export interface ChatMsg {
   content: string;
 }
 
-export async function chat(messages: ChatMsg[], opts: { temperature?: number; maxTokens?: number; timeoutMs?: number } = {}) {
+export interface ChatResult {
+  text: string; // answer text to parse (content, or reasoning text if content is empty)
+  diag: string; // short diagnostics for error messages
+}
+
+export async function chat(messages: ChatMsg[], opts: { temperature?: number; maxTokens?: number; timeoutMs?: number } = {}): Promise<ChatResult> {
   const c = llmConfig();
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 45000);
+  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 100000);
   try {
     const res = await fetch(`${c.baseUrl}/chat/completions`, {
       method: "POST",
@@ -29,23 +34,62 @@ export async function chat(messages: ChatMsg[], opts: { temperature?: number; ma
         model: c.model,
         messages,
         temperature: opts.temperature ?? 0.7,
-        max_tokens: opts.maxTokens ?? 1200,
+        // Reasoning models spend tokens thinking before answering; leave plenty of room.
+        max_tokens: opts.maxTokens ?? 6000,
       }),
       signal: ctrl.signal,
     });
     if (!res.ok) throw new Error(`LLM ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const data = await res.json();
-    return String(data?.choices?.[0]?.message?.content ?? "");
+    const choice = data?.choices?.[0] ?? {};
+    const msg = choice.message ?? {};
+    const content = typeof msg.content === "string" ? msg.content : "";
+    const reasoning = String(msg.reasoning_content ?? msg.reasoning ?? "");
+    const diag = `finish=${choice.finish_reason ?? "?"} content=${content.length}ch reasoning=${reasoning.length}ch head="${content.slice(0, 60).replace(/\s+/g, " ")}"`;
+    // Prefer the answer; fall back to the reasoning text if the answer is empty or has no JSON.
+    const text = content.includes("{") ? content : `${content}\n${reasoning}`;
+    return { text, diag };
   } finally {
     clearTimeout(timer);
   }
 }
 
-/** Pull the first JSON object out of a model reply (handles <think> blocks and code fences). */
-export function extractJson(text: string): unknown {
-  const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/```(?:json)?/g, "");
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("No JSON object in model output");
-  return JSON.parse(cleaned.slice(start, end + 1));
+/**
+ * Find a JSON object in a model reply. Handles <think> blocks (closed or truncated), code fences,
+ * prose around the JSON, and several candidate objects: returns the last one that parses and has
+ * one of the wanted keys.
+ */
+export function extractJson(text: string, wantKeys: string[] = [], diag = ""): unknown {
+  let t = text.replace(/```(?:json)?/g, "");
+  const closeIdx = t.lastIndexOf("</think>");
+  if (closeIdx >= 0) {
+    const after = t.slice(closeIdx + 8);
+    if (after.includes("{")) t = after; // the answer after thinking wins when it has JSON
+  }
+  const found: unknown[] = [];
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] !== "{") continue;
+    let depth = 0, inStr = false, esc = false;
+    for (let j = i; j < t.length; j++) {
+      const ch = t[j];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === "\\") esc = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') inStr = true;
+      else if (ch === "{") depth++;
+      else if (ch === "}" && --depth === 0) {
+        try {
+          const obj = JSON.parse(t.slice(i, j + 1));
+          if (obj && typeof obj === "object") found.push(obj);
+        } catch {}
+        break;
+      }
+    }
+  }
+  const good = found.filter((o) => !wantKeys.length || wantKeys.some((k) => k in (o as Record<string, unknown>)));
+  if (!good.length) throw new Error(`No JSON object in model output (${diag})`);
+  return good[good.length - 1];
 }
