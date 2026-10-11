@@ -128,7 +128,7 @@ export async function interpret(message: string, inst: Instance, history: { role
         ...history.slice(-6),
         { role: "user", content: message },
       ],
-      { temperature: 0.2, timeoutMs: 40000 },
+      { temperature: 0.2, budgetMs: 45000 },
     );
     const json = extractJson(text, ["action", "reply"], diag) as { reply?: string; action?: unknown };
     const action = validateAction(json.action, inst);

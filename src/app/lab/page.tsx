@@ -123,6 +123,15 @@ export default function Lab() {
           <span className="rounded-full border border-line bg-panel px-2.5 py-1">
             {meta.mode === "llm" ? `LLM agents · ${meta.model} on Luminal` : "Mock agents (no LUMINAL_API_KEY): random mutation, not an LLM"}
           </span>
+          {meta.mode === "llm" && all.length > 1 && (() => {
+            const props = all.filter((c) => c.agent !== "baseline");
+            const ok = props.filter((c) => c.source === "llm").length;
+            return (
+              <span className={`rounded-full border px-2.5 py-1 ${ok === props.length ? "border-ok text-ok" : "border-warn text-warn"}`}>
+                LLM proposals {ok}/{props.length}{ok < props.length ? ` · ${props.length - ok} fell back to local mutation` : ""}
+              </span>
+            );
+          })()}
           <span className="rounded-full border border-line bg-panel px-2.5 py-1">MongoDB {meta.db ? "on" : "off"}</span>
           {status && <span className="rounded-full border border-line bg-panel px-2.5 py-1 text-muted">{status}</span>}
         </div>

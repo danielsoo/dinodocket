@@ -22,36 +22,72 @@ export interface ChatResult {
   diag: string; // short diagnostics for error messages
 }
 
-export async function chat(messages: ChatMsg[], opts: { temperature?: number; maxTokens?: number; timeoutMs?: number } = {}): Promise<ChatResult> {
-  const c = llmConfig();
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 100000);
-  try {
-    const res = await fetch(`${c.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${c.apiKey}` },
-      body: JSON.stringify({
-        model: c.model,
-        messages,
-        temperature: opts.temperature ?? 0.7,
-        // Reasoning models spend tokens thinking before answering; leave plenty of room.
-        max_tokens: opts.maxTokens ?? 6000,
-      }),
-      signal: ctrl.signal,
-    });
-    if (!res.ok) throw new Error(`LLM ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const data = await res.json();
-    const choice = data?.choices?.[0] ?? {};
-    const msg = choice.message ?? {};
-    const content = typeof msg.content === "string" ? msg.content : "";
-    const reasoning = String(msg.reasoning_content ?? msg.reasoning ?? "");
-    const diag = `finish=${choice.finish_reason ?? "?"} content=${content.length}ch reasoning=${reasoning.length}ch head="${content.slice(0, 60).replace(/\s+/g, " ")}"`;
-    // Prefer the answer; fall back to the reasoning text if the answer is empty or has no JSON.
-    const text = content.includes("{") ? content : `${content}\n${reasoning}`;
-    return { text, diag };
-  } finally {
-    clearTimeout(timer);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const RETRYABLE = new Set([408, 429, 500, 502, 503, 504]);
+
+export class LlmError extends Error {
+  constructor(message: string, public attempts: number) {
+    super(message);
   }
+}
+
+/**
+ * One chat completion with retries. Transient errors (503 "temporarily unavailable", 429, timeouts)
+ * are retried with exponential backoff and jitter until the overall time budget runs out.
+ */
+export async function chat(
+  messages: ChatMsg[],
+  opts: { temperature?: number; maxTokens?: number; budgetMs?: number; models?: string[] } = {},
+): Promise<ChatResult & { attempts: number; model: string }> {
+  const c = llmConfig();
+  const models = opts.models ?? [c.model, ...(process.env.LUMINAL_FALLBACK_MODEL ? [process.env.LUMINAL_FALLBACK_MODEL] : [])];
+  const deadline = Date.now() + (opts.budgetMs ?? 95000);
+  let attempt = 0;
+  let lastErr = "";
+  while (Date.now() < deadline - 3000) {
+    const model = models[attempt % models.length];
+    attempt++;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), Math.max(5000, Math.min(70000, deadline - Date.now())));
+    try {
+      const res = await fetch(`${c.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${c.apiKey}` },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: opts.temperature ?? 0.7,
+          // Reasoning models spend tokens thinking before answering; leave plenty of room.
+          max_tokens: opts.maxTokens ?? 6000,
+        }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) {
+        lastErr = `LLM ${res.status}: ${(await res.text()).slice(0, 160)}`;
+        if (!RETRYABLE.has(res.status)) throw new LlmError(lastErr, attempt);
+      } else {
+        const data = await res.json();
+        const choice = data?.choices?.[0] ?? {};
+        const msg = choice.message ?? {};
+        const content = typeof msg.content === "string" ? msg.content : "";
+        const reasoning = String(msg.reasoning_content ?? msg.reasoning ?? "");
+        const diag = `finish=${choice.finish_reason ?? "?"} content=${content.length}ch reasoning=${reasoning.length}ch head="${content.slice(0, 60).replace(/\s+/g, " ")}"`;
+        // Prefer the answer; fall back to the reasoning text if the answer is empty or has no JSON.
+        const text = content.includes("{") ? content : `${content}\n${reasoning}`;
+        return { text, diag, attempts: attempt, model };
+      }
+    } catch (e) {
+      if (e instanceof LlmError) throw e;
+      lastErr = e instanceof Error && e.name === "AbortError" ? "LLM request timed out" : `LLM network error: ${e instanceof Error ? e.message : String(e)}`;
+    } finally {
+      clearTimeout(timer);
+    }
+    // Backoff: ~1.5s, 3s, 6s, 10s (capped), with jitter so parallel agents don't retry in lockstep.
+    const wait = Math.min(10000, 1500 * 2 ** (attempt - 1)) * (0.6 + Math.random() * 0.8);
+    if (Date.now() + wait > deadline - 3000) break;
+    await sleep(wait);
+  }
+  throw new LlmError(`${lastErr || "LLM unavailable"} (after ${attempt} attempts)`, attempt);
 }
 
 /**

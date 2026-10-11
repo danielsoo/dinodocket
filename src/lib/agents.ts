@@ -105,10 +105,12 @@ Last round's attempts:
 ${recent.length ? recent.map((r) => `- ${r.agent}: ${r.mean.toFixed(2)} (${r.rationale})`).join("\n") : "- none yet"}
 
 Propose ONE new strategy that you expect to beat ${best.eval.mean.toFixed(2)} on unseen student weeks. Do not copy an existing strategy exactly.`;
-          const { text, diag } = await chat([{ role: "system", content: SYSTEM }, { role: "user", content: user }], { temperature: a.id === "explorer" ? 1.0 : 0.6 });
+          await new Promise((r) => setTimeout(r, i * 600)); // stagger so 4 agents don't hit the API at once
+          const { text, diag, attempts } = await chat([{ role: "system", content: SYSTEM }, { role: "user", content: user }], { temperature: a.id === "explorer" ? 1.0 : 0.6 });
           const json = extractJson(text, ["strategy", "order", "slot"], diag) as { rationale?: string; strategy?: unknown };
           strategy = sanitize(json.strategy ?? json, best.strategy);
-          rationale = String(json.rationale ?? "").slice(0, 300);
+          rationale = String(json.rationale ?? "").slice(0, 300) || "(model returned a strategy without a rationale)";
+          if (attempts > 1) rationale += ` [succeeded after ${attempts} attempts]`;
         } catch (e) {
           source = "fallback";
           error = e instanceof Error ? e.message : String(e);
