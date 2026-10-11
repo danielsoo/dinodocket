@@ -140,7 +140,7 @@ export default function Lab() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Stat label="Baseline (train)" value={baseline ? baseline.eval.mean.toFixed(1) : "—"} />
-        <Stat label="Best so far (train)" value={best ? best.eval.mean.toFixed(1) : "—"} sub={best && best.agent !== "baseline" ? `${best.agent}, round ${best.round}` : undefined} />
+        <Stat label="Best so far (train)" value={best ? best.eval.mean.toFixed(1) : "—"} sub={best && best.agent !== "baseline" ? `${best.agent}, round ${best.round}${best.source === "fallback" ? " (fallback)" : best.source === "llm" ? " (LLM)" : ""}` : undefined} />
         <Stat
           label={`Held-out test (${test?.testSize ?? 15} unseen weeks)`}
           value={test ? `${test.baseline.mean.toFixed(1)} → ${test.best.mean.toFixed(1)}` : "—"}
@@ -157,6 +157,7 @@ export default function Lab() {
               <span key={n} className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />{n}</span>
             ))}
             <span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-ink" />best so far</span>
+            {meta?.mode === "llm" && <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full border border-muted" />hollow = fallback</span>}
           </div>
         </div>
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Candidate scores per round with best-so-far line">
@@ -173,8 +174,17 @@ export default function Lab() {
             <polyline fill="none" stroke="var(--ink)" strokeWidth="2" points={bestSoFar.map((p) => `${x(p.r)},${yy(p.s)}`).join(" ")} />
           )}
           {all.map((c, i) => (
-            <circle key={i} cx={x(c.round) + (c.agent === "baseline" ? 0 : ((i % 4) - 1.5) * 5)} cy={yy(c.eval.mean)} r="4.5" fill={AGENT_COLORS[c.agent] ?? "#888"} opacity="0.85">
-              <title>{`${c.agent} r${c.round}: ${c.eval.mean.toFixed(2)}`}</title>
+            <circle
+              key={i}
+              cx={x(c.round) + (c.agent === "baseline" ? 0 : ((i % 4) - 1.5) * 5)}
+              cy={yy(c.eval.mean)}
+              r="4.5"
+              fill={c.source === "fallback" ? "var(--panel)" : AGENT_COLORS[c.agent] ?? "#888"}
+              stroke={AGENT_COLORS[c.agent] ?? "#888"}
+              strokeWidth={c.source === "fallback" ? 1.5 : 0}
+              opacity="0.9"
+            >
+              <title>{`${c.agent} r${c.round}: ${c.eval.mean.toFixed(2)}${c.source === "fallback" ? " (fallback: local mutation)" : ""}`}</title>
             </circle>
           ))}
         </svg>

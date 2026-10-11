@@ -83,10 +83,19 @@ export interface RoundInput {
   recent: { agent: string; mean: number; rationale: string }[]; // what was tried last round
 }
 
+// Limit simultaneous LLM calls: the shared hackathon endpoint returns 503 when overloaded.
+const LLM_CONCURRENCY = 2;
+const ROUND_BUDGET_MS = 110000; // the round route has maxDuration 120s
+
 export async function runRound({ round, elites, recent }: RoundInput): Promise<Candidate[]> {
   const train = trainSet();
   const best = elites[0];
   const useLlm = llmEnabled();
+  const roundDeadline = Date.now() + ROUND_BUDGET_MS;
+  let active = 0;
+  const queue: (() => void)[] = [];
+  const acquire = () => new Promise<void>((res) => (active < LLM_CONCURRENCY ? (active++, res()) : queue.push(() => (active++, res()))));
+  const release = () => { active--; queue.shift()?.(); };
 
   return Promise.all(
     AGENTS.map(async (a, i): Promise<Candidate> => {
@@ -105,8 +114,17 @@ Last round's attempts:
 ${recent.length ? recent.map((r) => `- ${r.agent}: ${r.mean.toFixed(2)} (${r.rationale})`).join("\n") : "- none yet"}
 
 Propose ONE new strategy that you expect to beat ${best.eval.mean.toFixed(2)} on unseen student weeks. Do not copy an existing strategy exactly.`;
-          await new Promise((r) => setTimeout(r, i * 600)); // stagger so 4 agents don't hit the API at once
-          const { text, diag, attempts } = await chat([{ role: "system", content: SYSTEM }, { role: "user", content: user }], { temperature: a.id === "explorer" ? 1.0 : 0.6 });
+          await acquire();
+          let res;
+          try {
+            res = await chat([{ role: "system", content: SYSTEM }, { role: "user", content: user }], {
+              temperature: a.id === "explorer" ? 1.0 : 0.6,
+              budgetMs: Math.max(8000, roundDeadline - Date.now() - 2000),
+            });
+          } finally {
+            release();
+          }
+          const { text, diag, attempts } = res;
           const json = extractJson(text, ["strategy", "order", "slot"], diag) as { rationale?: string; strategy?: unknown };
           strategy = sanitize(json.strategy ?? json, best.strategy);
           rationale = String(json.rationale ?? "").slice(0, 300) || "(model returned a strategy without a rationale)";

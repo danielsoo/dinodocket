@@ -119,13 +119,20 @@ export function extractJson(text: string, wantKeys: string[] = [], diag = ""): u
       else if (ch === "}" && --depth === 0) {
         try {
           const obj = JSON.parse(t.slice(i, j + 1));
-          if (obj && typeof obj === "object") found.push(obj);
+          if (obj && typeof obj === "object") {
+            found.push(obj);
+            i = j; // skip nested objects: we want the outer {"rationale", "strategy"}, not the inner strategy
+          }
         } catch {}
         break;
       }
     }
   }
-  const good = found.filter((o) => !wantKeys.length || wantKeys.some((k) => k in (o as Record<string, unknown>)));
-  if (!good.length) throw new Error(`No JSON object in model output (${diag})`);
-  return good[good.length - 1];
+  // Earlier keys in wantKeys are preferred: an object with "strategy" beats a bare strategy object.
+  for (const k of wantKeys) {
+    const hit = found.filter((o) => k in (o as Record<string, unknown>));
+    if (hit.length) return hit[hit.length - 1];
+  }
+  if (!wantKeys.length && found.length) return found[found.length - 1];
+  throw new Error(`No JSON object in model output (${diag})`);
 }
