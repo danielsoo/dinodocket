@@ -79,7 +79,10 @@ export default function Planner() {
   useEffect(() => {
     if (ready) save("dinodocket.approved", approved);
   }, [approved, ready]);
-  useEffect(() => chatEnd.current?.scrollIntoView({ behavior: "smooth" }), [messages]);
+  useEffect(() => {
+    // Braces matter: newer Chromium returns a Promise from scrollIntoView, and React would call it as a cleanup.
+    chatEnd.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   async function propose(next: Instance, label: string) {
     const res = await fetch("/api/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instance: next, strategy }) });
