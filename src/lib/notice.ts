@@ -23,6 +23,27 @@ const hrs = (m: number) => `${(m / 60).toFixed(m % 60 ? 1 : 0)}h`;
 export function computeNotices(inst: Instance, sch: Schedule | null): Notice[] {
   const out: Notice[] = [];
 
+  // 0. Double-booked commitments.
+  const f = inst.fixed;
+  for (let i = 0; i < f.length; i++)
+    for (let j = i + 1; j < f.length; j++) {
+      const a = f[i], b = f[j];
+      if (a.day !== b.day || !(a.start < b.end && b.start < a.end)) continue;
+      const when = `${DAY_NAMES[a.day]} ${fmtTime(Math.max(a.start, b.start))} to ${fmtTime(Math.min(a.end, b.end))}`;
+      const movable = a.kind === "class" ? b : b.kind === "class" ? a : b; // classes rarely move; ask to move the other one
+      out.push({
+        id: `double-${a.id}-${b.id}`,
+        level: "warn",
+        title: `Double-booked: "${a.title}" and "${b.title}"`,
+        detail: `They overlap ${when}. You can't attend both in full.`,
+        action: {
+          kind: "draft",
+          label: `Draft a message to move "${movable.title}"`,
+          text: `Hi, I just realized "${movable.title}" on ${DAY_NAMES[movable.day]} at ${fmtTime(movable.start)} overlaps with another commitment I can't move. Would a different time work? I'm flexible later that day or the next. Thanks!`,
+        },
+      });
+    }
+
   // 1. Meetings that are missing the one detail you need to actually show up.
   for (const e of inst.fixed) {
     if (e.kind !== "meeting" || e.link || e.location) continue;

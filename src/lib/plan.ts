@@ -1,5 +1,5 @@
 import { score } from "./engine/evaluate";
-import { schedule, dueLabel } from "./engine/scheduler";
+import { schedule, dueLabel, fmtTime } from "./engine/scheduler";
 import { sanitize } from "./engine/strategy";
 import { DAY_NAMES, type Category, type FixedEvent, type Importance, type Instance, type Schedule, type Strategy, type Task } from "./engine/types";
 import { DEFAULT_STRATEGY } from "./demo";
@@ -65,8 +65,19 @@ export function sanitizeInstance(raw: unknown): Instance {
 
 const hrs = (m: number) => `${(m / 60).toFixed(m % 60 ? 1 : 0)}h`;
 
+export function fixedConflicts(inst: Instance) {
+  const out: { a: Instance["fixed"][number]; b: Instance["fixed"][number] }[] = [];
+  const f = inst.fixed;
+  for (let i = 0; i < f.length; i++)
+    for (let j = i + 1; j < f.length; j++)
+      if (f[i].day === f[j].day && f[i].start < f[j].end && f[j].start < f[i].end) out.push({ a: f[i], b: f[j] });
+  return out;
+}
+
 export function explain(inst: Instance, sch: Schedule): string[] {
   const lines: string[] = [];
+  for (const { a, b } of fixedConflicts(inst))
+    lines.push(`⚠ Double-booked: "${a.title}" and "${b.title}" overlap on ${DAY_NAMES[a.day]} ${fmtTime(Math.max(a.start, b.start))} to ${fmtTime(Math.min(a.end, b.end))}. I kept both and planned around them. You'll need to pick one.`);
   const need = inst.tasks.reduce((a, t) => a + t.minutes, 0);
   const placed = sch.sessions.reduce((a, s) => a + (s.end - s.start), 0);
   lines.push(`Placed ${hrs(placed)} of ${hrs(need)} requested work in ${sch.sessions.length} sessions. Fixed commitments were not moved.`);

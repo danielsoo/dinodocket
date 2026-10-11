@@ -9,9 +9,11 @@ export function validate(inst: Instance, sch: Schedule): string[] {
   const p = inst.profile;
   const tasks = new Map(inst.tasks.map((t) => [t.id, t]));
   const total = new Map<string, number>();
+  // Fixed events may overlap each other (real double-bookings happen; we surface them as a notice).
+  // What the engine must never do is put work on top of anything.
   const blocks = [
-    ...inst.fixed.map((e) => ({ label: e.title, day: e.day, start: e.start, end: e.end })),
-    ...sch.sessions.map((s) => ({ label: tasks.get(s.taskId)?.title ?? s.taskId, day: s.day, start: s.start, end: s.end })),
+    ...inst.fixed.map((e) => ({ label: e.title, day: e.day, start: e.start, end: e.end, fixed: true })),
+    ...sch.sessions.map((s) => ({ label: tasks.get(s.taskId)?.title ?? s.taskId, day: s.day, start: s.start, end: s.end, fixed: false })),
   ];
   for (const s of sch.sessions) {
     const t = tasks.get(s.taskId);
@@ -30,6 +32,7 @@ export function validate(inst: Instance, sch: Schedule): string[] {
   for (let i = 0; i < blocks.length; i++)
     for (let j = i + 1; j < blocks.length; j++) {
       const a = blocks[i], b = blocks[j];
+      if (a.fixed && b.fixed) continue;
       if (a.day === b.day && a.start < b.end && b.start < a.end) v.push(`Overlap: ${a.label} and ${b.label}`);
     }
   return v;
