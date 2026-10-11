@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import WeekCalendar, { taskColor } from "@/components/WeekCalendar";
+import { taskColor } from "@/components/WeekCalendar";
+import PlannerCalendar from "@/components/PlannerCalendar";
+import { MONTHS_SHORT, defaultPlanWeek, fromIso, toIso } from "@/lib/dates";
 import SessionDetail from "@/components/SessionDetail";
 import { EventEditor } from "@/components/Editors";
 import { SWATCHES, addGroup, allGroups, assignGroup, awakeMinutes, deleteGroup, freeColor, renameGroup, setGroupColor, weekStats } from "@/lib/groups";
@@ -86,6 +88,7 @@ export default function Planner() {
   const [selected, setSelected] = useState<Session | null>(null);
   const [editEvent, setEditEvent] = useState<{ event: FixedEvent; isNew: boolean } | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
+  const [planWeek, setPlanWeek] = useState<Date | null>(null); // Monday the template week is pinned to
   const [sync, setSync] = useState<"off" | "loading" | "saving" | "saved" | "error">("off");
   const [copied, setCopied] = useState(false);
   const chatEnd = useRef<HTMLDivElement>(null);
@@ -96,6 +99,7 @@ export default function Planner() {
     setInstance(load("dinodocket.v3.instance", DEMO));
     setApproved(load<Schedule | null>("dinodocket.v3.approved", null));
     setStrategy(load("dinodocket.strategy", DEFAULT_STRATEGY));
+    setPlanWeek(fromIso(load<string | null>("dinodocket.planWeek", null)) ?? defaultPlanWeek(new Date()));
     const answers = loadAnswers();
     if (answers) {
       // Show that the setup questions were actually used.
@@ -144,6 +148,9 @@ export default function Planner() {
     }, 1200);
     return () => clearTimeout(t);
   }, [instance, approved, planId, ready]);
+  useEffect(() => {
+    if (ready && planWeek) save("dinodocket.planWeek", toIso(planWeek));
+  }, [planWeek, ready]);
   useEffect(() => {
     if (ready) save("dinodocket.v3.instance", instance);
   }, [instance, ready]);
@@ -322,7 +329,7 @@ export default function Planner() {
       <section className="min-w-0 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold">This week</h1>
+            <h1 className="text-3xl font-bold">{planWeek ? `Week of ${MONTHS_SHORT[planWeek.getMonth()]} ${planWeek.getDate()}` : "This week"}</h1>
             <span
               className={`rounded-full px-3 py-1 text-xs font-bold ${
                 status === "Proposal" ? "bg-claw/25 text-ink" : status === "Approved" ? "bg-ok/15 text-ok" : "bg-fixed text-muted"
@@ -416,10 +423,12 @@ export default function Planner() {
           </div>
         )}
 
-        <WeekCalendar
+        <PlannerCalendar
           instance={shownInst}
           sessions={shownSessions}
           proposed={!!proposal}
+          planWeek={planWeek}
+          onPlanWeekChange={setPlanWeek}
           onSelect={setSelected}
           onSelectEvent={(e) => setEditEvent({ event: e, isNew: false })}
           onCreate={(day, minute) =>

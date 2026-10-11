@@ -2,6 +2,7 @@
 
 import { DAY_NAMES, type FixedEvent, type Instance, type Session } from "@/lib/engine/types";
 import { fmtTime } from "@/lib/engine/scheduler";
+import { addDays, sameDay } from "@/lib/dates";
 
 const PX = 28; // pixels per 30 minutes (a 30-min block must fit one readable line)
 
@@ -29,10 +30,16 @@ export default function WeekCalendar({
   onSelect,
   onSelectEvent,
   onCreate,
+  weekStart = null,
+  now = null,
+  showPlan = true,
 }: {
   instance: Instance;
   sessions: Session[];
   proposed: boolean;
+  weekStart?: Date | null; // Monday this template week is pinned to (null until the client clock is known)
+  now?: Date | null;
+  showPlan?: boolean; // false for weeks other than the planned one: only recurring fixed events are drawn
   onSelect?: (s: Session) => void;
   onSelectEvent?: (e: FixedEvent) => void;
   onCreate?: (day: number, minute: number) => void;
@@ -56,13 +63,26 @@ export default function WeekCalendar({
   }
 
   return (
-    <div className="card overflow-x-auto">
+    <div className="overflow-x-auto">
       <div className="min-w-[760px]">
-        <div className="sticky top-0 z-20 grid grid-cols-[52px_repeat(7,1fr)] border-b border-line bg-panel font-display text-sm font-semibold text-ink">
+        <div className="sticky top-0 z-20 grid grid-cols-[52px_repeat(7,1fr)] border-b border-line bg-panel text-ink">
           <div />
-          {DAY_NAMES.map((d) => (
-            <div key={d} className="px-2 py-2.5">{d}</div>
-          ))}
+          {DAY_NAMES.map((d, i) => {
+            const date = weekStart ? addDays(weekStart, i) : null;
+            const today = !!(date && now && sameDay(date, now));
+            return (
+              <div key={d} className="flex items-baseline gap-1.5 px-2 py-2">
+                <span className={`text-xs font-bold uppercase tracking-wide ${today ? "text-accent" : "text-muted"}`}>{d}</span>
+                {date && (
+                  <span
+                    className={`font-display text-lg font-semibold leading-none ${today ? "flex h-7 w-7 items-center justify-center self-center rounded-full bg-accent text-sm text-white" : ""}`}
+                  >
+                    {date.getDate()}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
         <div className="grid grid-cols-[52px_repeat(7,1fr)]">
           <div className="relative" style={{ height }}>
@@ -72,10 +92,14 @@ export default function WeekCalendar({
               </div>
             ))}
           </div>
-          {DAY_NAMES.map((_, d) => (
+          {DAY_NAMES.map((_, d) => {
+            const date = weekStart ? addDays(weekStart, d) : null;
+            const isToday = !!(date && now && sameDay(date, now));
+            const nowMin = now ? now.getHours() * 60 + now.getMinutes() : -1;
+            return (
             <div
               key={d}
-              className="relative cursor-cell border-l border-line"
+              className={`relative cursor-cell border-l border-line ${isToday ? "bg-accent/[0.04]" : ""}`}
               style={{ height }}
               title="Click an empty spot to add an event"
               onClick={(ev) => {
@@ -119,7 +143,14 @@ export default function WeekCalendar({
                 );
               })}
 
-              {blocks.filter((b) => b.day === d).map((b) => {
+              {isToday && nowMin >= from && nowMin <= to && (
+                <div className="pointer-events-none absolute inset-x-0 z-20" style={{ top: y(nowMin) }} aria-label="Current time">
+                  <div className="absolute -left-[5px] -top-[5px] h-2.5 w-2.5 rounded-full bg-warn" />
+                  <div className="h-0.5 bg-warn" />
+                </div>
+              )}
+
+              {showPlan && blocks.filter((b) => b.day === d).map((b) => {
                 const t = tasks.get(b.taskId);
                 const c = taskColor(instance, b.taskId);
                 const h = y(b.end) - y(b.start);
@@ -146,16 +177,17 @@ export default function WeekCalendar({
                 );
               })}
 
-              {instance.tasks.filter((t) => t.dueDay === d && t.dueMin > from && t.dueMin <= to).map((t) => (
+              {showPlan && instance.tasks.filter((t) => t.dueDay === d && t.dueMin > from && t.dueMin <= to).map((t) => (
                 <div key={`due-${t.id}`} className="pointer-events-none absolute inset-x-0 z-10" style={{ top: y(t.dueMin) - 1 }}>
-                  <div className="h-0.5 bg-warn/70" />
-                  <span className="absolute -top-2 left-0 max-w-[92%] truncate rounded-r-full bg-warn px-1.5 text-[9px] font-extrabold leading-4 text-white" title={`${t.title} due ${fmtTime(t.dueMin)}`}>
+                  <div className="border-t-2 border-dashed border-claw" />
+                  <span className="absolute -top-2 left-0 max-w-[92%] truncate rounded-r-full bg-claw px-1.5 text-[9px] font-extrabold leading-4 text-[#1b1400]" title={`${t.title} due ${fmtTime(t.dueMin)}`}>
                     Due {t.title}
                   </span>
                 </div>
               ))}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
