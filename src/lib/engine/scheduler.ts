@@ -7,6 +7,7 @@ const FREE = 0, FIXED = 1, WORK = 2;
 const LATE = 22 * 60;
 
 export function fmtTime(min: number) {
+  if (min >= 1440) return "11:59 PM"; // end of day, not the start of the next one
   const hh = Math.floor(min / 60) % 24;
   const mm = min % 60;
   const ampm = hh >= 12 ? "PM" : "AM";
