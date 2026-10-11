@@ -22,6 +22,18 @@ export default function Lab() {
   const [running, setRunning] = useState(false);
   const [saved, setSaved] = useState("");
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  type PastRun = { _id: string; savedAt: string; mode: string; model: string | null; baselineTrain: number; bestTrain: number; test?: { baseline?: { mean: number }; best?: { mean: number } } | null };
+  const [history, setHistory] = useState<PastRun[] | null>(null);
+  const loadHistory = async () => {
+    try {
+      const r = await (await fetch("/api/lab/runs")).json();
+      if (r.enabled) setHistory(r.runs ?? []);
+    } catch {}
+  };
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadHistory();
+  }, []);
 
   // Restore the last finished (or partial) run so a good LLM run survives reloads and API outages.
   useEffect(() => {
@@ -108,7 +120,10 @@ export default function Lab() {
             rounds: pool.map((c) => ({ agent: c.agent, round: c.round, mean: c.eval.mean, source: c.source, rationale: c.rationale })),
           }),
         })).json();
-        if (s.id) setSaved(`Run saved to MongoDB (${s.id}).`);
+        if (s.id) {
+          setSaved(`Run saved to MongoDB (${s.id}).`);
+          loadHistory();
+        }
       }
     } catch (e) {
       setStatus(`Stopped: ${e instanceof Error ? e.message : String(e)}`);
@@ -262,6 +277,33 @@ export default function Lab() {
             <h2 className="mb-2 text-sm font-semibold">Best strategy</h2>
             <pre className="max-h-72 overflow-auto rounded-md bg-bg p-3 text-[11px] leading-snug">{JSON.stringify(best.strategy, null, 2)}</pre>
           </div>
+        </div>
+      )}
+
+      {history && history.length > 0 && (
+        <div className="card overflow-x-auto">
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <h2 className="text-base font-semibold">Past runs <span className="text-xs font-normal text-muted">· stored in MongoDB Atlas</span></h2>
+            <span className="text-xs text-muted">{history.length} most recent</span>
+          </div>
+          <table className="w-full min-w-[560px] text-left text-sm">
+            <thead className="border-b border-line text-xs text-muted">
+              <tr><th className="px-3 py-2">When</th><th className="px-3 py-2">Agents</th><th className="px-3 py-2">Train</th><th className="px-3 py-2">Held-out test</th></tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {history.map((r) => {
+                const b = r.test?.baseline?.mean, t = r.test?.best?.mean;
+                return (
+                  <tr key={r._id}>
+                    <td className="px-3 py-2 text-muted">{new Date(r.savedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td>
+                    <td className="px-3 py-2">{r.mode === "llm" ? `LLM · ${r.model ?? ""}` : "Mock"}</td>
+                    <td className="px-3 py-2 font-mono">{r.baselineTrain.toFixed(1)} → {r.bestTrain.toFixed(1)}</td>
+                    <td className="px-3 py-2 font-mono">{b != null && t != null ? `${b.toFixed(1)} → ${t.toFixed(1)} (+${(((t - b) / b) * 100).toFixed(1)}%)` : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 

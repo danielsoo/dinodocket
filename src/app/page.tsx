@@ -85,6 +85,9 @@ export default function Planner() {
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState<Session | null>(null);
   const [editEvent, setEditEvent] = useState<{ event: FixedEvent; isNew: boolean } | null>(null);
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [sync, setSync] = useState<"off" | "loading" | "saving" | "saved" | "error">("off");
+  const [copied, setCopied] = useState(false);
   const chatEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -100,7 +103,47 @@ export default function Planner() {
     }
     setReady(true);
     /* eslint-enable react-hooks/set-state-in-effect */
+
+    // MongoDB sync (only when the server has MONGODB_URI). A ?plan=<id> link opens that plan on this device.
+    const shared = new URLSearchParams(window.location.search).get("plan");
+    let id = shared || load<string | null>("dinodocket.planId", null);
+    if (!id) id = crypto.randomUUID();
+    save("dinodocket.planId", id);
+    const planIdNow = id;
+    (async () => {
+      try {
+        const r = await fetch(`/api/plan?id=${planIdNow}`);
+        const data = await r.json();
+        if (!data.enabled) return;
+        setPlanId(planIdNow);
+        if (shared && data.plan?.instance) {
+          setInstance(data.plan.instance);
+          setApproved(data.plan.approved?.sessions?.length ? data.plan.approved : null);
+          setMessages((m) => [...m, { role: "assistant", content: "Opened your plan from MongoDB. Changes here stay in sync." }]);
+          window.history.replaceState(null, "", window.location.pathname);
+        }
+        setSync("saved");
+      } catch {
+        setSync("error");
+      }
+    })();
   }, []);
+
+  // Debounced save to MongoDB whenever the plan changes.
+  useEffect(() => {
+    if (!ready || !planId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSync("saving");
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch("/api/plan", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: planId, instance, approved }) });
+        setSync(r.ok ? "saved" : "error");
+      } catch {
+        setSync("error");
+      }
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [instance, approved, planId, ready]);
   useEffect(() => {
     if (ready) save("dinodocket.v3.instance", instance);
   }, [instance, ready]);
@@ -269,6 +312,25 @@ export default function Planner() {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            {planId && (
+              <span className="hidden items-center gap-2 text-xs text-muted md:flex">
+                <span className={`h-2 w-2 rounded-full ${sync === "error" ? "bg-warn" : sync === "saving" ? "bg-claw" : "bg-ok"}`} aria-hidden />
+                {sync === "error" ? "MongoDB sync failed" : sync === "saving" ? "Saving to MongoDB…" : "Saved to MongoDB"}
+                <button
+                  className="font-semibold text-accent hover:underline"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(`${window.location.origin}/?plan=${planId}`);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    } catch {}
+                  }}
+                  title="Copy a link that opens this plan on your phone or laptop"
+                >
+                  {copied ? "Link copied" : "Open on another device"}
+                </button>
+              </span>
+            )}
             <span className="hidden text-xs text-muted sm:inline">Strategy: {strategy.name}</span>
             <button onClick={reset} className="rounded-xl px-3 py-2 text-sm font-semibold text-muted hover:bg-panel hover:text-ink">Reset</button>
             <button onClick={generate} disabled={busy} className="btn-sticker rounded-xl bg-accent px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
