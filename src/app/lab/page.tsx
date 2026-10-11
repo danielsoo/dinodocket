@@ -100,7 +100,7 @@ export default function Lab() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Agent Lab</h1>
+          <h1 className="text-3xl font-bold">Agent Lab</h1>
           <p className="max-w-2xl text-sm text-muted">
             Four agents improve the scheduling strategy in parallel. Each round they read the best strategies, scores and worst
             failures, propose new strategies, and the engine scores them on {meta?.trainSize ?? 30} synthetic student weeks.
@@ -112,7 +112,7 @@ export default function Lab() {
             Rounds{" "}
             <input type="number" min={1} max={15} value={rounds} onChange={(e) => setRounds(Math.max(1, Math.min(15, Number(e.target.value))))} className="w-16 rounded-md border border-line bg-panel px-2 py-1.5 text-ink" />
           </label>
-          <button onClick={run} disabled={running} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-50">
+          <button onClick={run} disabled={running} className="btn-sticker rounded-xl bg-accent px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
             {running ? "Running…" : "Run optimization"}
           </button>
         </div>
@@ -149,7 +149,7 @@ export default function Lab() {
         />
       </div>
 
-      <div className="rounded-xl border border-line bg-panel p-4">
+      <div className="card p-4">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">Score by round (training weeks)</h2>
           <div className="flex flex-wrap gap-3 text-xs text-muted">
@@ -192,7 +192,7 @@ export default function Lab() {
 
       {baseline && best && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <div className="rounded-xl border border-line bg-panel p-4">
+          <div className="card p-4">
             <h2 className="mb-3 text-sm font-semibold">Where the gain comes from (train, baseline vs best)</h2>
             <div className="space-y-2.5">
               {COMPONENTS.map((k) => (
@@ -213,7 +213,7 @@ export default function Lab() {
             </button>
             {saved && <p className="mt-2 text-xs text-ok">{saved}</p>}
           </div>
-          <div className="rounded-xl border border-line bg-panel p-4">
+          <div className="card p-4">
             <h2 className="mb-2 text-sm font-semibold">Best strategy</h2>
             <pre className="max-h-72 overflow-auto rounded-md bg-bg p-3 text-[11px] leading-snug">{JSON.stringify(best.strategy, null, 2)}</pre>
           </div>
@@ -221,7 +221,7 @@ export default function Lab() {
       )}
 
       {all.length > 1 && (
-        <div className="overflow-x-auto rounded-xl border border-line bg-panel">
+        <div className="overflow-x-auto card">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="border-b border-line text-xs text-muted">
               <tr><th className="px-3 py-2">Round</th><th className="px-3 py-2">Agent</th><th className="px-3 py-2">Score</th><th className="px-3 py-2">Rationale</th></tr>
@@ -245,7 +245,7 @@ export default function Lab() {
 
 function Stat({ label, value, sub, highlight }: { label: string; value: string; sub?: string; highlight?: boolean }) {
   return (
-    <div className={`rounded-xl border bg-panel p-4 ${highlight ? "border-accent" : "border-line"}`}>
+    <div className={`card p-4 ${highlight ? "border-accent" : "border-line"}`}>
       <div className="text-xs text-muted">{label}</div>
       <div className="mt-1 font-mono text-2xl font-semibold">{value}</div>
       {sub && <div className="mt-0.5 text-xs text-muted">{sub}</div>}

@@ -1,32 +1,43 @@
 @import "tailwindcss";
 
+/* DinoDocket palette, taken from the logo: royal-blue badge, cyan claw, gold talons, ink outline. */
 :root {
-  --bg: #f6f5f1;
+  --bg: #eef3ff;
+  --bg-dot: #d6e0fb;
   --panel: #ffffff;
-  --ink: #1c1b18;
-  --muted: #6b6860;
-  --line: #e4e1d8;
-  --accent: #2f5bd3;
+  --ink: #0e1433;
+  --muted: #5a6593;
+  --line: #dbe3f8;
+  --accent: #2350e6; /* royal blue */
   --accent-ink: #ffffff;
-  --fixed-bg: #ebe8df;
-  --fixed-ink: #4a473f;
-  --warn: #b4441d;
-  --ok: #2f7d4f;
+  --deep: #14247a; /* header blue */
+  --cyan: #22c3ee; /* claw */
+  --claw: #e3b04f; /* talon gold */
+  --fixed-bg: #eef1fa;
+  --fixed-ink: #46507a;
+  --warn: #e0531f;
+  --ok: #15994a;
+  --stroke: #0e1433;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #121211;
-    --panel: #1b1b19;
-    --ink: #eceae4;
-    --muted: #9c998f;
-    --line: #2d2c29;
-    --accent: #7c9cff;
-    --accent-ink: #0d0d0c;
-    --fixed-bg: #262522;
-    --fixed-ink: #c9c6bc;
-    --warn: #f08a5d;
-    --ok: #6cc28f;
+    --bg: #090d26;
+    --bg-dot: #161e4a;
+    --panel: #10173d;
+    --ink: #eaf0ff;
+    --muted: #9aa6d6;
+    --line: #232d66;
+    --accent: #6f93ff;
+    --accent-ink: #081033;
+    --deep: #0b1240;
+    --cyan: #4fd6f7;
+    --claw: #f0c46a;
+    --fixed-bg: #18214f;
+    --fixed-ink: #b9c3ea;
+    --warn: #ff8a5c;
+    --ok: #46d17f;
+    --stroke: #000000;
   }
 }
 
@@ -38,23 +49,59 @@
   --color-line: var(--line);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
+  --color-deep: var(--deep);
+  --color-cyan: var(--cyan);
+  --color-claw: var(--claw);
   --color-fixed: var(--fixed-bg);
   --color-fixed-ink: var(--fixed-ink);
   --color-warn: var(--warn);
   --color-ok: var(--ok);
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Nunito", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-display: "Fredoka", "Nunito", ui-rounded, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 body {
-  background: var(--bg);
+  background-color: var(--bg);
+  /* faint dot grid, like planner paper */
+  background-image: radial-gradient(var(--bg-dot) 1px, transparent 1.2px);
+  background-size: 22px 22px;
   color: var(--ink);
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.005em;
+}
+
+@layer components {
+/* Sticker-style primary button: ink outline + offset shadow, like the logo badge. */
+.btn-sticker {
+  border: 2px solid var(--stroke);
+  box-shadow: 3px 3px 0 var(--stroke);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+.btn-sticker:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--stroke);
+}
+.btn-sticker:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--stroke);
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  box-shadow: 0 1px 0 rgba(14, 20, 51, 0.04), 0 8px 24px -16px rgba(20, 36, 122, 0.25);
 }
 
 .fixed-stripes {
   background-image: repeating-linear-gradient(
     135deg,
     transparent 0 6px,
-    color-mix(in srgb, var(--fixed-ink) 9%, transparent) 6px 7px
+    color-mix(in srgb, var(--fixed-ink) 8%, transparent) 6px 7px
   );
+}
 }

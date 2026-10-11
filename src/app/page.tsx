@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import WeekCalendar, { taskColor } from "@/components/WeekCalendar";
 import SessionDetail from "@/components/SessionDetail";
 import { DEMO, DEFAULT_STRATEGY } from "@/lib/demo";
@@ -179,10 +180,10 @@ export default function Planner() {
       <section className="min-w-0 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">This week</h1>
+            <h1 className="text-3xl font-bold">This week</h1>
             <span
-              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                status === "Proposal" ? "bg-accent/15 text-accent" : status === "Approved" ? "bg-ok/15 text-ok" : "bg-fixed text-muted"
+              className={`rounded-full px-3 py-1 text-xs font-bold ${
+                status === "Proposal" ? "bg-claw/25 text-ink" : status === "Approved" ? "bg-ok/15 text-ok" : "bg-fixed text-muted"
               }`}
             >
               {status}
@@ -190,25 +191,25 @@ export default function Planner() {
           </div>
           <div className="flex items-center gap-2">
             <span className="hidden text-xs text-muted sm:inline">Strategy: {strategy.name}</span>
-            <button onClick={reset} className="rounded-lg px-3 py-2 text-sm text-muted hover:bg-fixed hover:text-ink">Reset</button>
-            <button onClick={generate} disabled={busy} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink shadow-sm disabled:opacity-50">
+            <button onClick={reset} className="rounded-xl px-3 py-2 text-sm font-semibold text-muted hover:bg-panel hover:text-ink">Reset</button>
+            <button onClick={generate} disabled={busy} className="btn-sticker rounded-xl bg-accent px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
               {approved ? "Re-plan week" : "Generate plan"}
             </button>
           </div>
         </div>
 
         {proposal && (
-          <div className="overflow-hidden rounded-2xl border border-accent/40 bg-panel shadow-sm">
+          <div className="card overflow-hidden border-2! border-claw!">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3">
               <div className="min-w-0">
-                <div className="text-sm font-semibold">Review proposed changes</div>
+                <div className="font-display text-base font-semibold">Review proposed changes</div>
                 <div className="text-xs text-muted">
                   {diff?.added ?? 0} added · {diff?.removed ?? 0} moved or removed · dashed blocks are new. Nothing changes until you approve.
                 </div>
               </div>
               <div className="flex gap-2">
-                <button onClick={reject} className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-fixed">Reject</button>
-                <button onClick={approve} className="rounded-lg bg-ok px-4 py-1.5 text-sm font-medium text-white shadow-sm">Approve</button>
+                <button onClick={reject} className="rounded-xl border border-line px-3 py-1.5 text-sm font-semibold hover:bg-fixed">Reject</button>
+                <button onClick={approve} className="btn-sticker rounded-xl bg-ok px-4 py-1.5 text-sm font-bold text-white">Approve</button>
               </div>
             </div>
             <div className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_auto]">
@@ -254,11 +255,11 @@ export default function Planner() {
       </section>
 
       <aside className="flex min-w-0 flex-col gap-4">
-        <div className="flex h-[460px] flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
-          <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-            <span className="grid h-7 w-7 place-items-center rounded-full bg-accent/15 text-sm" aria-hidden>🦕</span>
+        <div className="card flex h-[460px] flex-col overflow-hidden">
+          <div className="flex items-center gap-2.5 border-b border-line bg-deep/[0.04] px-4 py-3">
+            <Image src="/logo-160.png" alt="" width={32} height={32} />
             <div>
-              <div className="text-sm font-semibold leading-tight">Dino</div>
+              <div className="font-display text-base font-semibold leading-tight">Dino</div>
               <div className="text-[11px] text-muted">{busy ? "Thinking…" : "Proposes changes. You approve."}</div>
             </div>
           </div>
@@ -268,7 +269,7 @@ export default function Planner() {
                 <div
                   className={
                     m.role === "user"
-                      ? "max-w-[85%] rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-accent-ink"
+                      ? "max-w-[85%] rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-white"
                       : "max-w-[90%] rounded-2xl rounded-bl-md bg-fixed px-3.5 py-2"
                   }
                 >
@@ -296,9 +297,9 @@ export default function Planner() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="e.g. I want to practice making croissants"
-              className="min-w-0 flex-1 rounded-xl border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+              className="min-w-0 flex-1 rounded-xl border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
             />
-            <button disabled={busy || !input.trim()} className="rounded-xl bg-accent px-4 text-sm font-medium text-accent-ink disabled:opacity-40">Send</button>
+            <button disabled={busy || !input.trim()} className="btn-sticker rounded-xl bg-accent px-4 text-sm font-bold text-white disabled:opacity-40">Send</button>
           </form>
         </div>
 
@@ -325,10 +326,10 @@ function NoticePanel({ notices, onAsk, onBreakDown }: { notices: Notice[]; onAsk
   const [showAll, setShowAll] = useState(false);
   const visible = showAll ? notices : notices.slice(0, 4);
   return (
-    <div className="overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
+    <div className="card overflow-hidden">
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
-        <span className="text-sm font-semibold">Dino noticed</span>
-        <span className="rounded-full bg-fixed px-2 py-0.5 text-xs text-muted">{notices.length}</span>
+        <span className="font-display text-base font-semibold">Dino noticed</span>
+        <span className="rounded-full bg-claw/25 px-2 py-0.5 text-xs font-bold">{notices.length}</span>
       </div>
       {notices.length === 0 ? (
         <p className="px-4 py-3 text-sm text-muted">Nothing needs your attention right now.</p>
@@ -358,7 +359,7 @@ function NoticePanel({ notices, onAsk, onBreakDown }: { notices: Notice[]; onAsk
                     <div className="mt-2 rounded-lg border border-line bg-bg p-2.5 text-xs">
                       <p className="whitespace-pre-wrap">{n.action.text}</p>
                       <button
-                        className="mt-2 rounded-md bg-accent px-2.5 py-1 font-medium text-accent-ink"
+                        className="mt-2 rounded-lg bg-accent px-2.5 py-1 font-bold text-white"
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText((n.action as { text: string }).text);
@@ -399,9 +400,9 @@ function TaskList({ instance, placedFn, onRemove, onAdd }: { instance: Instance;
     setOpen(false);
   };
   return (
-    <div className="overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
+    <div className="card overflow-hidden">
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
-        <span className="text-sm font-semibold">Tasks &amp; goals</span>
+        <span className="font-display text-base font-semibold">Tasks &amp; goals</span>
         <button onClick={() => setOpen(!open)} className="text-sm font-medium text-accent">{open ? "Cancel" : "+ Add"}</button>
       </div>
       {open && (
@@ -415,7 +416,7 @@ function TaskList({ instance, placedFn, onRemove, onAdd }: { instance: Instance;
             {DAY_NAMES.map((d, i) => <option key={d} value={i}>Due {d}</option>)}
           </select>
           <input aria-label="Due time" type="time" value={f.time} onChange={(e) => setF({ ...f, time: e.target.value })} className="rounded-lg border border-line bg-bg px-2 py-1.5" />
-          <button className="col-span-2 rounded-lg bg-accent py-1.5 font-medium text-accent-ink">Propose with this task</button>
+          <button className="btn-sticker col-span-2 rounded-xl bg-accent py-1.5 font-bold text-white">Propose with this task</button>
         </form>
       )}
       <ul className="divide-y divide-line">

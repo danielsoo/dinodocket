@@ -33,7 +33,7 @@ export default function SessionDetail({
   const now = new Set(steps.map((s) => s.n));
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose} role="presentation">
+    <div className="fixed inset-0 z-50 flex justify-end bg-deep/40 backdrop-blur-[2px]" onClick={onClose} role="presentation">
       <aside
         role="dialog"
         aria-modal="true"
@@ -44,7 +44,7 @@ export default function SessionDetail({
         <div className="border-b border-line p-5" style={{ borderTop: `4px solid ${color}` }}>
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold leading-snug">{task.title}</h2>
+              <h2 className="text-xl font-semibold leading-snug">{task.title}</h2>
               <p className="mt-1 text-sm text-muted">
                 {DAY_NAMES[session.day]} {fmtTime(session.start)} to {fmtTime(session.end)}
                 {total > 1 ? ` · session ${index + 1} of ${total}` : ""}
@@ -108,7 +108,7 @@ export default function SessionDetail({
             <p className="text-muted">No step-by-step plan for this task yet.</p>
             <button
               onClick={() => onBreakDown(task.title)}
-              className="rounded-lg bg-accent px-3 py-2 font-medium text-accent-ink"
+              className="btn-sticker rounded-xl bg-accent px-3 py-2 font-bold text-white"
             >
               Ask Dino to break it into steps
             </button>

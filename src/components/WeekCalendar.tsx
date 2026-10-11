@@ -5,7 +5,7 @@ import { fmtTime } from "@/lib/engine/scheduler";
 
 const PX = 22; // pixels per 30 minutes
 
-export const TASK_COLORS = ["#2f5bd3", "#c2410c", "#0f766e", "#7c3aed", "#b45309", "#be185d", "#15803d", "#0369a1"];
+export const TASK_COLORS = ["#2350e6", "#e0531f", "#0ea5c6", "#7c3aed", "#c98a1a", "#db2777", "#15994a", "#0f766e"];
 
 export function taskColor(inst: Instance, taskId: string) {
   const i = inst.tasks.findIndex((t) => t.id === taskId);
@@ -33,9 +33,9 @@ export default function WeekCalendar({
   const tasks = new Map(instance.tasks.map((t) => [t.id, t]));
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-sm">
+    <div className="card overflow-x-auto">
       <div className="min-w-[760px]">
-        <div className="sticky top-0 z-20 grid grid-cols-[52px_repeat(7,1fr)] border-b border-line bg-panel text-xs font-semibold uppercase tracking-wide text-muted">
+        <div className="sticky top-0 z-20 grid grid-cols-[52px_repeat(7,1fr)] border-b border-line bg-panel font-display text-sm font-semibold text-ink">
           <div />
           {DAY_NAMES.map((d) => (
             <div key={d} className="px-2 py-2.5">{d}</div>
@@ -96,7 +96,7 @@ export default function WeekCalendar({
                     }}
                     title={`${t?.title ?? s.taskId} ${fmtTime(s.start)}-${fmtTime(s.end)}${proposed ? " (proposed)" : ""}`}
                   >
-                    <span className="font-semibold" style={{ color: c }}>
+                    <span className="font-bold" style={{ color: `color-mix(in srgb, ${c} 72%, var(--ink))` }}>
                       {t?.plan?.length ? <span aria-label="has steps">☰ </span> : null}
                       {t?.title ?? s.taskId}
                     </span>
@@ -107,8 +107,8 @@ export default function WeekCalendar({
 
               {instance.tasks.filter((t) => t.dueDay === d && t.dueMin > from && t.dueMin <= to).map((t) => (
                 <div key={`due-${t.id}`} className="pointer-events-none absolute inset-x-0 z-10" style={{ top: y(t.dueMin) }}>
-                  <div className="border-t border-dashed border-warn" />
-                  <span className="absolute right-1 -top-2 max-w-[90%] truncate rounded-full bg-warn px-1.5 text-[9px] font-semibold leading-4 text-white" title={`${t.title} due ${fmtTime(t.dueMin)}`}>
+                  <div className="border-t-2 border-dashed border-claw" />
+                  <span className="absolute right-1 -top-2 max-w-[90%] truncate rounded-full border border-ink/70 bg-claw px-1.5 text-[9px] font-bold leading-4 text-ink" title={`${t.title} due ${fmtTime(t.dueMin)}`}>
                     Due · {t.title}
                   </span>
                 </div>
