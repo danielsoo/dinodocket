@@ -30,7 +30,7 @@ Google Calendar shows when you're free. It doesn't tell you whether everything y
 - **Edit like a normal calendar.** Click an empty slot to add an event, click any block to edit time, link, location, group or color.
 - **Where your week goes.** Custom groups (School, Work, THON, anything) and a whole-week bar showing each group's share of your awake time and what's left free.
 - **Personalized from sign-up.** Onboarding answers (wake and sleep, focus hours, session length, daily limit, work style, goals) set the engine's profile and are passed to Dino.
-- **Synced to MongoDB Atlas.** No login needed: each browser gets a private plan id; "Open on another device" copies a link that opens the same plan on your phone.
+- **Accounts, synced to MongoDB Atlas.** Sign up and your plan and preferences follow you to any device. Without an account, each browser gets a private plan id and "Open on another device" copies a link to the same plan.
 
 ### Agent Lab (`/lab`): the self-improving agent team
 1. **Baseline:** earliest-deadline-first greedy (first free slot, 1h chunks, no daily limit, no breaks).
@@ -103,4 +103,4 @@ Without `LUMINAL_API_KEY` the Lab uses clearly labeled mock agents and the chat 
 2. Env vars: `LUMINAL_API_KEY` (base URL `https://flash.luminal.cloud/v1` and model `deepseek-ai/DeepSeek-V4.1-Flash` are defaults; override with `LUMINAL_BASE_URL` / `LUMINAL_MODEL`), and `MONGODB_URI` (Atlas; allow `0.0.0.0/0` in Network Access since Vercel IPs change).
 3. Deploy.
 
-Login and sign-up screens are a demo flow only (no real authentication yet).
+**Accounts.** Email and password sign-up and login, stored in MongoDB Atlas: passwords are kept only as salted scrypt hashes, sessions are HMAC-signed httpOnly cookies (30 days). Each account has its own plan and its own sign-up answers, so every user (or judge) gets a planner and an AI tuned to them, on any device. Set `AUTH_SECRET` to a long random string in production; without it a secret is derived from the database URI. Google sign-in is not implemented yet.
