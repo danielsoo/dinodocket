@@ -43,7 +43,7 @@ export default function AuthNav() {
 
   return (
     <div className="ml-auto flex items-center gap-2 md:ml-4">
-      <Link href="/onboarding" title="Edit your planning preferences" className="flex items-center gap-2 rounded-full pr-1 hover:bg-white/10">
+      <Link href="/settings" title="Your settings" className="flex items-center gap-2 rounded-full pr-1 hover:bg-white/10">
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-claw font-display text-sm font-bold text-deep" aria-hidden>
           {user.name.charAt(0).toUpperCase()}
         </span>

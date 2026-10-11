@@ -166,7 +166,7 @@ export function loadAnswers(): Answers | null {
 }
 
 /** Save answers and write them into the planner's saved instance and strategy. */
-export function applyAnswers(a: Answers, name: string, demo: Instance, baseStrategy: Strategy) {
+export function applyAnswers(a: Answers, name: string, demo: Instance, baseStrategy: Strategy, opts: { keepPlan?: boolean } = {}) {
   try {
     localStorage.setItem(KEY, JSON.stringify(a));
     const raw = localStorage.getItem(INSTANCE_KEY);
@@ -175,8 +175,9 @@ export function applyAnswers(a: Answers, name: string, demo: Instance, baseStrat
     inst.name = name || inst.name;
     localStorage.setItem(INSTANCE_KEY, JSON.stringify(inst));
     localStorage.setItem("dinodocket.v3.savedAt", String(Date.now()));
-    // The approved plan was made for the old profile; let the user regenerate.
-    localStorage.removeItem("dinodocket.v3.approved");
+    // The approved plan was made for the old profile; let the user regenerate
+    // (Settings keeps it, so editing one preference doesn't wipe the week).
+    if (!opts.keepPlan) localStorage.removeItem("dinodocket.v3.approved");
     const rawS = localStorage.getItem(STRATEGY_KEY);
     const strat = rawS ? (JSON.parse(rawS) as Strategy) : baseStrategy;
     localStorage.setItem(STRATEGY_KEY, JSON.stringify(tuneStrategy(strat, a)));
