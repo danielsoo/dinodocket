@@ -5,7 +5,7 @@ import Image from "next/image";
 import WeekCalendar, { taskColor } from "@/components/WeekCalendar";
 import SessionDetail from "@/components/SessionDetail";
 import { EventEditor } from "@/components/Editors";
-import { DEFAULT_GROUPS, weekStats } from "@/lib/groups";
+import { SWATCHES, addGroup, allGroups, assignGroup, awakeMinutes, deleteGroup, freeColor, renameGroup, setGroupColor, weekStats } from "@/lib/groups";
 import { DEMO, DEFAULT_STRATEGY } from "@/lib/demo";
 import { DAY_NAMES, type FixedEvent, type Importance, type Instance, type Schedule, type Session, type Strategy, type Task } from "@/lib/engine/types";
 import { fmtTime } from "@/lib/engine/scheduler";
@@ -148,7 +148,11 @@ export default function Planner() {
       const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text, instance: base, history }) });
       const data = (await res.json()) as { reply: string; action: Action; source: string };
       setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
-      if (data.action && data.action.type !== "none") await propose(applyAction(base, data.action), data.reply);
+      if (data.action?.type === "set_group") {
+        const { inst: next, matched } = assignGroup(base, data.action.group, data.action.titles);
+        if (matched) await applyEdit(next, false, `Grouped into ${data.action.group}`);
+        else setMessages((m) => [...m, { role: "assistant", content: "I couldn't find those items on your calendar. Try the exact title, like \"THON committee\"." }]);
+      } else if (data.action && data.action.type !== "none") await propose(applyAction(base, data.action), data.reply);
     } catch {
       setMessages((m) => [...m, { role: "assistant", content: "Something went wrong reaching the planner. Your schedule was not changed." }]);
     } finally {
@@ -158,11 +162,7 @@ export default function Planner() {
 
   /** Direct edits by the user apply right away; if timing changed and a plan exists, Dino proposes a re-plan. */
   async function applyEdit(next: Instance, timingChanged: boolean, label: string) {
-    const withGroups = (inst: Instance) => {
-      const custom = new Set(inst.groups ?? []);
-      [...inst.fixed.map((e) => e.group), ...inst.tasks.map((t) => t.group)].forEach((g) => g && !DEFAULT_GROUPS.includes(g) && custom.add(g));
-      return { ...inst, groups: [...custom] };
-    };
+    const withGroups = (inst: Instance) => ({ ...inst, groups: allGroups(inst) });
     const inst = withGroups(next);
     if (proposal) {
       await propose(inst, label);
@@ -315,7 +315,7 @@ export default function Planner() {
           }
         />
         <p className="-mt-2 text-xs text-muted">Tip: click an empty spot to add an event, or any block to edit it.</p>
-        <StatsCard instance={shownInst} schedule={shownSched} />
+        <StatsCard instance={shownInst} schedule={shownSched} onChange={(next) => applyEdit(next, false, "Updated groups")} />
         {editEvent && (
           <EventEditor
             key={editEvent.event.id}
@@ -409,41 +409,120 @@ export default function Planner() {
   );
 }
 
-function StatsCard({ instance, schedule }: { instance: Instance; schedule: Schedule | null }) {
+function StatsCard({ instance, schedule, onChange }: { instance: Instance; schedule: Schedule | null; onChange: (next: Instance) => void }) {
+  const [manage, setManage] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [colorFor, setColorFor] = useState<string | null>(null);
   const stats = weekStats(instance, schedule);
-  const total = stats.reduce((a, s) => a + s.fixed + s.work, 0);
-  const max = Math.max(1, ...stats.map((s) => s.fixed + s.work));
+  const used = new Map(stats.map((s) => [s.group, s]));
+  const awake = Math.max(1, awakeMinutes(instance));
+  const scheduled = stats.reduce((a, s) => a + s.fixed + s.work, 0);
+  const free = Math.max(0, awake - scheduled);
   const h = (m: number) => `${(m / 60).toFixed(m % 60 ? 1 : 0)}h`;
+  const pctOf = (m: number) => `${Math.round((m / awake) * 100)}%`;
+  const groups = manage ? allGroups(instance) : stats.map((s) => s.group);
+  const maxG = Math.max(1, ...stats.map((s) => s.fixed + s.work));
+
   return (
     <div className="card p-5">
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-lg font-semibold">Where your week goes</h2>
-        <span className="text-xs text-muted">
-          {h(total)} scheduled · solid = commitments, striped = planned work{schedule ? "" : " (generate a plan to include work)"}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted">of {h(awake)} awake time this week</span>
+          <button onClick={() => setManage(!manage)} className="rounded-lg border border-line px-2.5 py-1 text-xs font-bold hover:bg-fixed">
+            {manage ? "Done" : "Manage groups"}
+          </button>
+        </div>
       </div>
-      <ul className="space-y-2.5">
+
+      {/* The whole awake week as one bar: each group's share, plus what's left free. */}
+      <div className="mb-1 flex h-6 overflow-hidden rounded-full border border-line bg-fixed" role="img" aria-label="Share of the awake week by group">
         {stats.map((s) => (
-          <li key={s.group} className="grid grid-cols-[96px_1fr_64px] items-center gap-3 text-sm">
-            <span className="flex items-center gap-1.5 truncate font-semibold">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} aria-hidden />
-              {s.group}
-            </span>
-            <div className="flex h-3.5 overflow-hidden rounded-full bg-fixed" role="img" aria-label={`${s.group}: ${h(s.fixed)} commitments, ${h(s.work)} planned work`}>
-              <div style={{ width: `${(s.fixed / max) * 100}%`, background: s.color }} />
-              <div
-                style={{
-                  width: `${(s.work / max) * 100}%`,
-                  background: `repeating-linear-gradient(135deg, ${s.color} 0 4px, color-mix(in srgb, ${s.color} 45%, var(--panel)) 4px 8px)`,
-                }}
-              />
-            </div>
-            <span className="text-right font-mono text-xs tabular-nums">
-              {h(s.fixed + s.work)} <span className="text-muted">({Math.round(((s.fixed + s.work) / Math.max(1, total)) * 100)}%)</span>
-            </span>
-          </li>
+          <div key={s.group} title={`${s.group}: ${h(s.fixed + s.work)} (${pctOf(s.fixed + s.work)})`} style={{ width: `${((s.fixed + s.work) / awake) * 100}%`, background: s.color }} />
         ))}
+      </div>
+      <div className="mb-4 flex justify-between text-[11px] text-muted">
+        <span>{h(scheduled)} scheduled ({pctOf(scheduled)})</span>
+        <span>{h(free)} free ({pctOf(free)}){schedule ? "" : " · generate a plan to count study time"}</span>
+      </div>
+
+      <ul className="space-y-2">
+        {groups.map((g) => {
+          const st = used.get(g);
+          const color = st?.color ?? (instance.groupColors?.[g] ?? SWATCHES[0]);
+          const total = (st?.fixed ?? 0) + (st?.work ?? 0);
+          return (
+            <li key={g} className="text-sm">
+              <div className="grid grid-cols-[minmax(90px,140px)_1fr_auto] items-center gap-3">
+                {manage ? (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setColorFor(colorFor === g ? null : g)}
+                      className="h-4 w-4 shrink-0 rounded-full border-2 border-ink/40"
+                      style={{ background: color }}
+                      aria-label={`Change ${g} color`}
+                    />
+                    <input
+                      defaultValue={g}
+                      aria-label={`Rename ${g}`}
+                      onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== g && onChange(renameGroup(instance, g, e.target.value))}
+                      onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                      className="w-full min-w-0 rounded-md border border-line bg-bg px-1.5 py-0.5 text-sm font-semibold outline-none focus:border-accent"
+                    />
+                  </div>
+                ) : (
+                  <span className="flex items-center gap-1.5 truncate font-semibold">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
+                    {g}
+                  </span>
+                )}
+                <div className="flex h-3 overflow-hidden rounded-full bg-fixed" role="img" aria-label={`${g}: ${h(st?.fixed ?? 0)} commitments, ${h(st?.work ?? 0)} planned work`}>
+                  <div style={{ width: `${((st?.fixed ?? 0) / maxG) * 100}%`, background: color }} />
+                  <div
+                    style={{
+                      width: `${((st?.work ?? 0) / maxG) * 100}%`,
+                      background: `repeating-linear-gradient(135deg, ${color} 0 4px, color-mix(in srgb, ${color} 45%, var(--panel)) 4px 8px)`,
+                    }}
+                  />
+                </div>
+                <span className="flex items-center gap-2 text-right font-mono text-xs tabular-nums">
+                  {h(total)} <span className="w-9 text-muted">{pctOf(total)}</span>
+                  {manage && (
+                    <button onClick={() => onChange(deleteGroup(instance, g))} className="font-sans text-xs font-semibold text-warn hover:underline" aria-label={`Delete ${g}`}>
+                      Delete
+                    </button>
+                  )}
+                </span>
+              </div>
+              {manage && colorFor === g && (
+                <div className="mt-1.5 flex flex-wrap gap-1.5 pl-6">
+                  {SWATCHES.map((c) => (
+                    <button key={c} onClick={() => { onChange(setGroupColor(instance, g, c)); setColorFor(null); }} className="h-6 w-6 rounded-full border-2 border-transparent hover:border-ink" style={{ background: c }} aria-label={c} />
+                  ))}
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
+
+      {manage && (
+        <form
+          className="mt-4 flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!newName.trim()) return;
+            onChange(addGroup(instance, newName, freeColor(instance)));
+            setNewName("");
+          }}
+        >
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New group, e.g. THON" aria-label="New group name" className="min-w-0 flex-1 rounded-lg border border-line bg-bg px-2.5 py-1.5 text-sm outline-none focus:border-accent" />
+          <button className="btn-sticker rounded-xl bg-accent px-3 text-sm font-bold text-white">Add group</button>
+        </form>
+      )}
+      <p className="mt-3 text-[11px] text-muted">
+        Solid = commitments, striped = planned study. {manage ? "Rename a group to rename it everywhere. Deleting moves its items to Other." : "Assign groups by clicking any block."}
+      </p>
     </div>
   );
 }

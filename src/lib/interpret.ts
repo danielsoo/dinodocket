@@ -2,6 +2,7 @@ import { chat, extractJson, llmEnabled } from "./llm";
 import { DAY_NAMES, type Importance, type Instance, type PlanStep } from "./engine/types";
 import { fmtTime } from "./engine/scheduler";
 import { genericPlan, sanitizePlan } from "./steps";
+import { allGroups, eventGroup, taskGroup } from "./groups";
 
 // The AI never edits the calendar. It only returns one of these structured actions,
 // which the server validates and the client turns into a proposal the user must approve.
@@ -10,6 +11,7 @@ export type Action =
   | { type: "add_goal"; title: string; minutes: number; dueDay: number; dueMin: number; importance: Importance; plan: PlanStep[] }
   | { type: "update_task"; taskId: string; minutes?: number; dueDay?: number; dueMin?: number; importance?: Importance; plan?: PlanStep[] }
   | { type: "remove_task"; taskId: string }
+  | { type: "set_group"; group: string; titles: string[] }
   | { type: "add_event"; title: string; day: number; start: number; end: number; meeting?: boolean; link?: string; location?: string }
   | { type: "none" };
 
@@ -82,6 +84,12 @@ export function validateAction(raw: unknown, inst: Instance): Action | null {
       const location = typeof a.location === "string" && a.location.trim() ? a.location.trim().slice(0, 80) : undefined;
       return { type: "add_event", title: a.title.trim().slice(0, 80), day: d, start: s, end: e, meeting: a.meeting === true || undefined, link, location };
     }
+    case "set_group": {
+      const group = typeof a.group === "string" ? a.group.trim().slice(0, 24) : "";
+      const titles = (Array.isArray(a.titles) ? a.titles : []).filter((t): t is string => typeof t === "string" && !!t.trim()).slice(0, 20);
+      if (!group || !titles.length) return null;
+      return { type: "set_group", group, titles };
+    }
     case "none":
       return { type: "none" };
     default:
@@ -90,9 +98,9 @@ export function validateAction(raw: unknown, inst: Instance): Action | null {
 }
 
 function summarize(inst: Instance) {
-  const tasks = inst.tasks.map((t) => `- ${t.id}: "${t.title}" ${(t.minutes / 60).toFixed(1)}h, due ${DAY_NAMES[t.dueDay]} ${fmtTime(t.dueMin)}, ${t.importance}${t.plan?.length ? `, has ${t.plan.length} steps` : ""}`).join("\n");
-  const ev = inst.fixed.map((e) => `- ${e.title} ${DAY_NAMES[e.day]} ${fmtTime(e.start)}-${fmtTime(e.end)} (locked)`).join("\n");
-  return `Tasks:\n${tasks || "- none"}\nFixed events:\n${ev || "- none"}`;
+  const tasks = inst.tasks.map((t) => `- ${t.id}: "${t.title}" ${(t.minutes / 60).toFixed(1)}h, due ${DAY_NAMES[t.dueDay]} ${fmtTime(t.dueMin)}, ${t.importance}, group ${taskGroup(t)}${t.plan?.length ? `, has ${t.plan.length} steps` : ""}`).join("\n");
+  const ev = inst.fixed.map((e) => `- "${e.title}" ${DAY_NAMES[e.day]} ${fmtTime(e.start)}-${fmtTime(e.end)} (locked, group ${eventGroup(e)})`).join("\n");
+  return `Groups: ${allGroups(inst).join(", ")}\nTasks:\n${tasks || "- none"}\nFixed events:\n${ev || "- none"}`;
 }
 
 const SYSTEM = `You are the planning assistant inside a student scheduler called DinoDocket.
@@ -108,6 +116,7 @@ Allowed actions (JSON):
    // use "steps" here when the student asks to break an existing task into steps
 {"type":"remove_task","taskId":str}
 {"type":"add_event","title":str,"day":"Tue","start":"18:00","end":"20:00","meeting"?:true,"link"?:"https://...","location"?:str}   // fixed, locked commitment or blocked time; set meeting:true for calls/meetings and include a link or location ONLY if the student gave one (never invent links)
+{"type":"set_group","group":str,"titles":[str]}   // put events/tasks into a group for weekly stats; use exact titles from the calendar; a new group name is created automatically; keep the group name in the language the student used
 {"type":"none"}
 Rules: if a detail that changes the plan is missing (how many hours a new task needs, or which day it is due), use {"type":"none"} and ask ONE short question. Never invent a due day. If a due day is given without a time, use "23:59" and mention that assumption in your reply. Never move or delete locked events.
 Example: "I want to practice making croissants" -> {"reply":"...","action":{"type":"add_goal","title":"Practice making croissants","steps":[{"title":"Learn lamination","detail":"Watch how butter is folded into the dough and note the fold count.","minutes":45,"resources":[{"kind":"youtube","label":"Lamination technique","query":"croissant lamination technique"}]},{"title":"Make the dough","detail":"Mix and chill the dough overnight.","minutes":60,"resources":[{"kind":"web","label":"Croissant dough recipe","query":"croissant dough recipe beginner"}]}]}}
@@ -133,6 +142,12 @@ function rules(msg: string, inst: Instance): Interpretation {
     const importance: Importance = /exam|midterm|final|essential|urgent/.test(m) ? "essential" : /important|high/.test(m) ? "high" : /optional|flexible|maybe/.test(m) ? "flexible" : "high";
     const a = validateAction({ type: "add_task", title: title.slice(0, 60), hours: Number(hours[1]), dueDay: dayIdx, dueTime: time?.[1] ?? "23:30", importance }, inst);
     if (a) return { reply: `Adding "${(a as { title: string }).title}" (${hours[1]}h, due ${DAY_NAMES[dayIdx]}). Here's how the week changes:`, action: a, source: "rules" };
+  }
+  const grp = msg.match(/^(?:put|move|add|set|group|make)\s+(.+?)\s+(?:in|into|to|as|under)\s+(?:the\s+|my\s+)?(?:group\s+)?["']?(.+?)["']?(?:\s+group)?[.!]*$/i);
+  if (grp) {
+    const titles = grp[1].split(/\s*(?:,|\band\b|&)\s*/i).filter(Boolean);
+    const a = validateAction({ type: "set_group", group: grp[2], titles }, inst);
+    if (a) return { reply: `Putting ${titles.join(", ")} in "${grp[2]}". The weekly stats will update.`, action: a, source: "rules" };
   }
   const goal = msg.match(/\b(?:practice|learn|learning|get better at|try making|want to (?:make|learn|practice|try|start|build))\s+(?:how to\s+)?(.+?)[.!?]*$/i);
   if (goal) {

@@ -73,7 +73,8 @@ export interface Instance {
   profile: Profile;
   fixed: FixedEvent[];
   tasks: Task[];
-  groups?: string[]; // user's custom group names (defaults are always available)
+  groups?: string[]; // the user's full group list (defaults are used until they customize)
+  groupColors?: Record<string, string>;
 }
 
 export interface Session {

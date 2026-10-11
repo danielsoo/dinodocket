@@ -66,7 +66,13 @@ export function sanitizeInstance(raw: unknown): Instance {
     },
     fixed,
     tasks,
-    groups: (Array.isArray(r.groups) ? r.groups : []).map(safeGroup).filter((g): g is string => !!g).slice(0, 12),
+    groups: (Array.isArray(r.groups) ? r.groups : []).map(safeGroup).filter((g): g is string => !!g).slice(0, 16),
+    groupColors: Object.fromEntries(
+      Object.entries(r.groupColors && typeof r.groupColors === "object" ? (r.groupColors as Record<string, unknown>) : {})
+        .map(([k, v]) => [safeGroup(k), safeColor(v)])
+        .filter((kv): kv is [string, string] => !!kv[0] && !!kv[1])
+        .slice(0, 16),
+    ),
   };
 }
 

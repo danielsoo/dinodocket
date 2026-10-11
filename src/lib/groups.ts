@@ -16,10 +16,14 @@ const GROUP_DEFAULT_COLOR: Record<string, string> = {
 };
 
 export function allGroups(inst: Instance) {
-  return [...DEFAULT_GROUPS, ...(inst.groups ?? []).filter((g) => !DEFAULT_GROUPS.includes(g))];
+  const base = inst.groups?.length ? inst.groups : DEFAULT_GROUPS;
+  // Include any group an item uses, so nothing disappears from the stats.
+  const used = [...inst.fixed.map(eventGroup), ...inst.tasks.map(taskGroup)];
+  return [...new Set([...base, ...used])];
 }
 
 export function groupColor(name: string, inst: Instance) {
+  if (inst.groupColors?.[name]) return inst.groupColors[name];
   if (GROUP_DEFAULT_COLOR[name]) return GROUP_DEFAULT_COLOR[name];
   const i = allGroups(inst).indexOf(name);
   return SWATCHES[(i < 0 ? 0 : i) % SWATCHES.length];
@@ -57,4 +61,71 @@ export function weekStats(inst: Instance, sch: Schedule | null): GroupStat[] {
     if (t) get(taskGroup(t)).work += s.end - s.start;
   }
   return [...map.values()].sort((a, b) => b.fixed + b.work - (a.fixed + a.work));
+}
+
+/** Rename a group everywhere: the list, its color, and every event or task that uses it (explicitly or by default). */
+export function renameGroup(inst: Instance, from: string, to: string): Instance {
+  const name = to.trim().slice(0, 24);
+  if (!name || name === from) return inst;
+  const groups = allGroups(inst).map((g) => (g === from ? name : g));
+  const groupColors = { ...(inst.groupColors ?? {}) };
+  groupColors[name] = groupColors[from] ?? groupColor(from, inst);
+  delete groupColors[from];
+  return {
+    ...inst,
+    groups: [...new Set(groups)],
+    groupColors,
+    fixed: inst.fixed.map((e) => (eventGroup(e) === from ? { ...e, group: name } : e)),
+    tasks: inst.tasks.map((t) => (taskGroup(t) === from ? { ...t, group: name } : t)),
+  };
+}
+
+/** Delete a group; its items move to "Other". */
+export function deleteGroup(inst: Instance, name: string): Instance {
+  const groupColors = { ...(inst.groupColors ?? {}) };
+  delete groupColors[name];
+  return {
+    ...inst,
+    groups: allGroups(inst).filter((g) => g !== name),
+    groupColors,
+    fixed: inst.fixed.map((e) => (eventGroup(e) === name ? { ...e, group: "Other" } : e)),
+    tasks: inst.tasks.map((t) => (taskGroup(t) === name ? { ...t, group: "Other" } : t)),
+  };
+}
+
+export function freeColor(inst: Instance) {
+  const taken = new Set(allGroups(inst).map((g) => groupColor(g, inst)));
+  return SWATCHES.find((c) => !taken.has(c)) ?? SWATCHES[allGroups(inst).length % SWATCHES.length];
+}
+
+/** Put the named items (matched by title) into a group, creating the group if needed. */
+export function assignGroup(inst: Instance, group: string, titles: string[]): { inst: Instance; matched: number } {
+  const g = group.trim().slice(0, 24);
+  const keys = titles.map((t) => t.trim().toLowerCase()).filter(Boolean);
+  if (!g || !keys.length) return { inst, matched: 0 };
+  const hit = (title: string) => {
+    const t = title.toLowerCase();
+    return keys.some((k) => t === k || t.includes(k) || k.includes(t));
+  };
+  let matched = 0;
+  const fixed = inst.fixed.map((e) => (hit(e.title) ? (matched++, { ...e, group: g }) : e));
+  const tasks = inst.tasks.map((t) => (hit(t.title) ? (matched++, { ...t, group: g }) : t));
+  let next: Instance = { ...inst, fixed, tasks };
+  if (!allGroups(inst).includes(g)) next = addGroup(next, g, freeColor(inst));
+  return { inst: { ...next, groups: allGroups(next) }, matched };
+}
+
+export function addGroup(inst: Instance, name: string, color?: string): Instance {
+  const n = name.trim().slice(0, 24);
+  if (!n) return inst;
+  return { ...inst, groups: [...new Set([...allGroups(inst), n])], groupColors: color ? { ...(inst.groupColors ?? {}), [n]: color } : inst.groupColors };
+}
+
+export function setGroupColor(inst: Instance, name: string, color: string): Instance {
+  return { ...inst, groups: allGroups(inst), groupColors: { ...(inst.groupColors ?? {}), [name]: color } };
+}
+
+/** Awake minutes in the week, the denominator for "share of my week". */
+export function awakeMinutes(inst: Instance) {
+  return 7 * Math.max(0, inst.profile.sleep - inst.profile.wake);
 }
