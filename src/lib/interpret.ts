@@ -10,7 +10,7 @@ export type Action =
   | { type: "add_goal"; title: string; minutes: number; dueDay: number; dueMin: number; importance: Importance; plan: PlanStep[] }
   | { type: "update_task"; taskId: string; minutes?: number; dueDay?: number; dueMin?: number; importance?: Importance; plan?: PlanStep[] }
   | { type: "remove_task"; taskId: string }
-  | { type: "add_event"; title: string; day: number; start: number; end: number }
+  | { type: "add_event"; title: string; day: number; start: number; end: number; meeting?: boolean; link?: string; location?: string }
   | { type: "none" };
 
 export interface Interpretation {
@@ -78,7 +78,9 @@ export function validateAction(raw: unknown, inst: Instance): Action | null {
     case "add_event": {
       const d = day(a.day), s = parseHM(a.start), e = parseHM(a.end);
       if (typeof a.title !== "string" || d === undefined || s === undefined || e === undefined || e <= s) return null;
-      return { type: "add_event", title: a.title.trim().slice(0, 80), day: d, start: s, end: e };
+      const link = typeof a.link === "string" && /^https?:\/\/\S+$/i.test(a.link.trim()) ? a.link.trim().slice(0, 300) : undefined;
+      const location = typeof a.location === "string" && a.location.trim() ? a.location.trim().slice(0, 80) : undefined;
+      return { type: "add_event", title: a.title.trim().slice(0, 80), day: d, start: s, end: e, meeting: a.meeting === true || undefined, link, location };
     }
     case "none":
       return { type: "none" };
@@ -105,7 +107,7 @@ Allowed actions (JSON):
 {"type":"update_task","taskId":str,"hours"?:number,"dueDay"?:str,"dueTime"?:str,"importance"?:str,"steps"?:[...same as add_goal]}
    // use "steps" here when the student asks to break an existing task into steps
 {"type":"remove_task","taskId":str}
-{"type":"add_event","title":str,"day":"Tue","start":"18:00","end":"20:00"}   // fixed, locked commitment or blocked time
+{"type":"add_event","title":str,"day":"Tue","start":"18:00","end":"20:00","meeting"?:true,"link"?:"https://...","location"?:str}   // fixed, locked commitment or blocked time; set meeting:true for calls/meetings and include a link or location ONLY if the student gave one (never invent links)
 {"type":"none"}
 Rules: if a detail that changes the plan is missing (how many hours a new task needs, or which day it is due), use {"type":"none"} and ask ONE short question. Never invent a due day. If a due day is given without a time, use "23:59" and mention that assumption in your reply. Never move or delete locked events.
 Example: "I want to practice making croissants" -> {"reply":"...","action":{"type":"add_goal","title":"Practice making croissants","steps":[{"title":"Learn lamination","detail":"Watch how butter is folded into the dough and note the fold count.","minutes":45,"resources":[{"kind":"youtube","label":"Lamination technique","query":"croissant lamination technique"}]},{"title":"Make the dough","detail":"Mix and chill the dough overnight.","minutes":60,"resources":[{"kind":"web","label":"Croissant dough recipe","query":"croissant dough recipe beginner"}]}]}}

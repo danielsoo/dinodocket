@@ -3,7 +3,7 @@
 import { DAY_NAMES, type Instance, type Session } from "@/lib/engine/types";
 import { fmtTime } from "@/lib/engine/scheduler";
 
-const PX = 20; // pixels per 30 minutes
+const PX = 22; // pixels per 30 minutes
 
 export const TASK_COLORS = ["#2f5bd3", "#c2410c", "#0f766e", "#7c3aed", "#b45309", "#be185d", "#15803d", "#0369a1"];
 
@@ -33,12 +33,12 @@ export default function WeekCalendar({
   const tasks = new Map(instance.tasks.map((t) => [t.id, t]));
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-line bg-panel">
+    <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-sm">
       <div className="min-w-[760px]">
-        <div className="grid grid-cols-[52px_repeat(7,1fr)] border-b border-line text-xs font-medium text-muted">
+        <div className="sticky top-0 z-20 grid grid-cols-[52px_repeat(7,1fr)] border-b border-line bg-panel text-xs font-semibold uppercase tracking-wide text-muted">
           <div />
           {DAY_NAMES.map((d) => (
-            <div key={d} className="px-2 py-2">{d}</div>
+            <div key={d} className="px-2 py-2.5">{d}</div>
           ))}
         </div>
         <div className="grid grid-cols-[52px_repeat(7,1fr)]">
@@ -52,22 +52,31 @@ export default function WeekCalendar({
           {DAY_NAMES.map((_, d) => (
             <div key={d} className="relative border-l border-line" style={{ height }}>
               {hours.map((m) => (
-                <div key={m} className="absolute inset-x-0 border-t border-line/60" style={{ top: y(m) }} />
+                <div key={m} className="absolute inset-x-0 border-t border-line/50" style={{ top: y(m) }} />
               ))}
               {/* Hours outside the student's awake window */}
               <div className="absolute inset-x-0 bg-ink/[0.03]" style={{ top: 0, height: Math.max(0, y(instance.profile.wake)) }} />
 
-              {instance.fixed.filter((e) => e.day === d).map((e) => (
-                <div
-                  key={e.id}
-                  className="fixed-stripes absolute inset-x-1 overflow-hidden rounded-md border border-line bg-fixed px-1.5 py-0.5 text-[10px] leading-tight text-fixed-ink"
-                  style={{ top: y(e.start), height: y(e.end) - y(e.start) - 1 }}
-                  title={`${e.title} (fixed, locked) ${fmtTime(e.start)}-${fmtTime(e.end)}`}
-                >
-                  <span aria-hidden>🔒 </span>
-                  <span className="font-medium">{e.title}</span>
-                </div>
-              ))}
+              {instance.fixed.filter((e) => e.day === d).map((e) => {
+                const meeting = e.kind === "meeting";
+                const missing = meeting && !e.link && !e.location;
+                return (
+                  <div
+                    key={e.id}
+                    className={`absolute inset-x-1 overflow-hidden rounded-md px-1.5 py-0.5 text-[10px] leading-tight text-fixed-ink ${meeting ? "border bg-panel" : "fixed-stripes bg-fixed"} ${missing ? "border-warn" : "border-line"}`}
+                    style={{ top: y(e.start), height: Math.max(PX - 1, y(e.end) - y(e.start) - 1) }}
+                    title={`${e.title} (fixed) ${fmtTime(e.start)}-${fmtTime(e.end)}${e.location ? ` · ${e.location}` : ""}${missing ? " · no link or location" : ""}`}
+                  >
+                    <span aria-hidden>{meeting ? (missing ? "⚠ " : "📹 ") : "🔒 "}</span>
+                    {meeting && e.link ? (
+                      <a href={e.link} target="_blank" rel="noopener noreferrer" className="font-medium underline-offset-2 hover:underline">{e.title}</a>
+                    ) : (
+                      <span className="font-medium">{e.title}</span>
+                    )}
+                    {missing && <span className="text-warn"> · no link</span>}
+                  </div>
+                );
+              })}
 
               {sessions.filter((s) => s.day === d).map((s, i) => {
                 const t = tasks.get(s.taskId);
@@ -77,12 +86,13 @@ export default function WeekCalendar({
                     type="button"
                     onClick={() => onSelect?.(s)}
                     key={`${s.taskId}-${s.start}-${i}`}
-                    className={`absolute inset-x-1 overflow-hidden rounded-md px-1.5 py-0.5 text-left text-[10px] leading-tight transition hover:brightness-95 focus-visible:outline-2 focus-visible:outline-accent ${proposed ? "border-2 border-dashed" : "border"}`}
+                    className={`absolute inset-x-1 overflow-hidden rounded-md border-l-[3px] px-1.5 py-0.5 text-left text-[10px] leading-tight shadow-[0_1px_0_rgba(0,0,0,0.03)] transition hover:-translate-y-px hover:shadow-md focus-visible:outline-2 focus-visible:outline-accent ${proposed ? "outline-1 outline-dashed -outline-offset-1" : ""}`}
                     style={{
                       top: y(s.start),
                       height: y(s.end) - y(s.start) - 1,
-                      borderColor: c,
-                      background: `color-mix(in srgb, ${c} ${proposed ? 12 : 20}%, var(--panel))`,
+                      borderLeftColor: c,
+                      outlineColor: c,
+                      background: `color-mix(in srgb, ${c} ${proposed ? 10 : 16}%, var(--panel))`,
                     }}
                     title={`${t?.title ?? s.taskId} ${fmtTime(s.start)}-${fmtTime(s.end)}${proposed ? " (proposed)" : ""}`}
                   >
@@ -97,9 +107,9 @@ export default function WeekCalendar({
 
               {instance.tasks.filter((t) => t.dueDay === d && t.dueMin > from && t.dueMin <= to).map((t) => (
                 <div key={`due-${t.id}`} className="pointer-events-none absolute inset-x-0 z-10" style={{ top: y(t.dueMin) }}>
-                  <div className="border-t-2 border-warn" />
-                  <span className="absolute right-1 -top-3.5 rounded bg-warn px-1 text-[9px] font-semibold text-white">
-                    DUE {t.title.length > 16 ? `${t.title.slice(0, 15)}…` : t.title}
+                  <div className="border-t border-dashed border-warn" />
+                  <span className="absolute right-1 -top-2 max-w-[90%] truncate rounded-full bg-warn px-1.5 text-[9px] font-semibold leading-4 text-white" title={`${t.title} due ${fmtTime(t.dueMin)}`}>
+                    Due · {t.title}
                   </span>
                 </div>
               ))}

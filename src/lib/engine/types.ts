@@ -22,8 +22,11 @@ export interface FixedEvent {
   day: number;
   start: number; // minutes from day start
   end: number;
-  kind: "class" | "work" | "club" | "event" | "personal";
+  kind: "class" | "work" | "club" | "event" | "personal" | "meeting";
   locked: boolean; // locked events can never be moved by the engine
+  link?: string; // video call link, if any
+  location?: string;
+  with?: string; // who the meeting is with
 }
 
 export interface Resource {

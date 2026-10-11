@@ -20,6 +20,8 @@ export const DEMO: Instance = {
     ...ev("Work shift", [5], 11, 15, "work"),
     ...ev("THON committee", [1], 19, 20.5, "club"),
     ...ev("ACM Web meeting", [3], 19, 20.5, "club"),
+    { id: "m1", title: "Internship recruiter call", day: 3, start: h(15.5), end: h(16), kind: "meeting", locked: true, with: "recruiter@company.com" },
+    { id: "m2", title: "Research group sync", day: 0, start: h(16), end: h(16.5), kind: "meeting", locked: true, location: "Library study room 2B" },
   ],
   tasks: [
     { id: "t1", title: "CMPSC 465 problem set", minutes: h(6), dueDay: 3, dueMin: h(23.5), importance: "essential", categories: ["deadline"] },

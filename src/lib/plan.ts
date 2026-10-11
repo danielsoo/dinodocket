@@ -7,7 +7,8 @@ import { sanitizePlan } from "./steps";
 
 const IMPS: Importance[] = ["essential", "high", "normal", "flexible"];
 const CATS: Category[] = ["deadline", "ongoing", "aspiration", "priority"];
-const KINDS: FixedEvent["kind"][] = ["class", "work", "club", "event", "personal"];
+const KINDS: FixedEvent["kind"][] = ["class", "work", "club", "event", "personal", "meeting"];
+const safeLink = (x: unknown) => (typeof x === "string" && /^https?:\/\/\S+$/i.test(x.trim()) ? x.trim().slice(0, 300) : undefined);
 const snap = (m: number) => Math.round(m / 30) * 30;
 const num = (x: unknown, lo: number, hi: number, d: number) => {
   const n = typeof x === "number" && Number.isFinite(x) ? x : d;
@@ -31,6 +32,9 @@ export function sanitizeInstance(raw: unknown): Instance {
       end: Math.max(start + 30, snap(num(e.end, 30, 1440, start + 60))),
       kind: KINDS.includes(e.kind as FixedEvent["kind"]) ? (e.kind as FixedEvent["kind"]) : "event",
       locked: true, // the engine never moves fixed events, whatever the client says
+      link: safeLink(e.link),
+      location: typeof e.location === "string" && e.location.trim() ? e.location.trim().slice(0, 80) : undefined,
+      with: typeof e.with === "string" && e.with.trim() ? e.with.trim().slice(0, 80) : undefined,
     };
   });
   const tasks: Task[] = (Array.isArray(r.tasks) ? r.tasks : []).slice(0, 40).map((t: Record<string, unknown>, i) => ({
