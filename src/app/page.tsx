@@ -7,7 +7,7 @@ import PlannerCalendar from "@/components/PlannerCalendar";
 import { MONTHS_SHORT, defaultPlanWeek, fromIso, toIso } from "@/lib/dates";
 import SessionDetail from "@/components/SessionDetail";
 import DinoEgg from "@/components/DinoEgg";
-import { blockPieces, pieceKey, weekProgress } from "@/lib/progress";
+import { blockPieces, goalProgress, pieceKey, taskKey } from "@/lib/progress";
 import { EventEditor } from "@/components/Editors";
 import { SWATCHES, addGroup, allGroups, assignGroup, awakeMinutes, deleteGroup, freeColor, renameGroup, setGroupColor, weekStats } from "@/lib/groups";
 import { DEMO, DEFAULT_STRATEGY } from "@/lib/demo";
@@ -376,17 +376,37 @@ export default function Planner() {
   }, [proposal, approved]);
   const notices = useMemo(() => computeNotices(shownInst, shownSched), [shownInst, shownSched]);
 
-  // Egg progress: share of the approved plan's work the user checked off this week.
+  // Egg progress = how much of every task & goal is finished (checked-off blocks, or the whole task marked complete).
   const weekKey = planWeek ? toIso(planWeek) : "";
   const done = useMemo(() => new Set(doneByWeek[weekKey] ?? []), [doneByWeek, weekKey]);
-  const progress = useMemo(() => weekProgress(approved?.sessions ?? [], done), [approved, done]);
-  function toggleDone(pieces: Session[]) {
+  const progress = useMemo(() => goalProgress(instance.tasks, approved?.sessions ?? [], done), [instance.tasks, approved, done]);
+  function updateDone(fn: (cur: Set<string>) => void) {
     if (!weekKey) return;
     setDoneByWeek((all) => {
       const cur = new Set(all[weekKey] ?? []);
-      const allDone = pieces.every((x) => cur.has(pieceKey(x)));
-      pieces.forEach((x) => (allDone ? cur.delete(pieceKey(x)) : cur.add(pieceKey(x))));
+      fn(cur);
       return { ...all, [weekKey]: [...cur] };
+    });
+  }
+  function toggleDone(pieces: Session[]) {
+    updateDone((cur) => {
+      const flagged = pieces.some((x) => cur.has(taskKey(x.taskId)));
+      const allDone = flagged || pieces.every((x) => cur.has(pieceKey(x)));
+      pieces.forEach((x) => (allDone ? cur.delete(pieceKey(x)) : cur.add(pieceKey(x))));
+      // un-checking a block means the task isn't finished any more
+      if (allDone) pieces.forEach((x) => cur.delete(taskKey(x.taskId)));
+    });
+  }
+  function toggleTaskComplete(id: string) {
+    updateDone((cur) => {
+      const mine = (approved?.sessions ?? []).filter((x) => x.taskId === id);
+      if (cur.has(taskKey(id))) {
+        cur.delete(taskKey(id));
+        mine.forEach((x) => cur.delete(pieceKey(x)));
+      } else {
+        cur.add(taskKey(id));
+        mine.forEach((x) => cur.add(pieceKey(x)));
+      }
     });
   }
   const selectedPieces = selected && approved && !proposal ? blockPieces(approved.sessions, selected) : null;
@@ -550,14 +570,14 @@ export default function Planner() {
             }}
             onSaveTask={saveTask}
             onDeleteTask={deleteTask}
-            isDone={!!selectedPieces && selectedPieces.every((x) => done.has(pieceKey(x)))}
+            isDone={!!selectedPieces && (done.has(taskKey(selected.taskId)) || selectedPieces.every((x) => done.has(pieceKey(x))))}
             onToggleDone={selectedPieces ? () => toggleDone(selectedPieces) : undefined}
           />
         )}
       </section>
 
       <aside className="flex min-w-0 flex-col gap-4">
-        <EggCard approved={!!approved} finished={progress.finished} total={progress.total} ratio={progress.ratio} />
+        <EggCard hasGoals={instance.tasks.length > 0} finished={progress.finished} total={progress.total} ratio={progress.ratio} count={instance.tasks.length} completeCount={[...progress.per.values()].filter((x) => x.ratio >= 1).length} />
         <div className="card flex h-[460px] flex-col overflow-hidden">
           <div className="flex items-center gap-2.5 border-b border-line bg-deep/[0.04] px-4 py-3">
             <Image src="/logo-160.png" alt="" width={32} height={32} />
@@ -622,6 +642,9 @@ export default function Planner() {
           placedFn={placed}
           onRemove={(id) => propose(applyAction(shownInst, { type: "remove_task", taskId: id }), "Remove task")}
           onAdd={(a) => propose(applyAction(shownInst, a), "Add task")}
+          progress={progress.per}
+          overall={progress.ratio}
+          onToggleComplete={toggleTaskComplete}
         />
       </aside>
     </div>
@@ -815,7 +838,25 @@ function NoticePanel({ notices, onAsk, onBreakDown, onLock }: { notices: Notice[
   );
 }
 
-function TaskList({ instance, placedFn, onRemove, onAdd }: { instance: Instance; placedFn: (id: string) => number; onRemove: (id: string) => void; onAdd: (a: Action) => void }) {
+type GoalProgress = { done: number; total: number; ratio: number; complete: boolean };
+
+function TaskList({
+  instance,
+  placedFn,
+  onRemove,
+  onAdd,
+  progress,
+  overall,
+  onToggleComplete,
+}: {
+  instance: Instance;
+  placedFn: (id: string) => number;
+  onRemove: (id: string) => void;
+  onAdd: (a: Action) => void;
+  progress: Map<string, GoalProgress>;
+  overall: number;
+  onToggleComplete: (id: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ title: "", hours: 3, day: 3, time: "23:30", importance: "high" as Importance });
   const submit = (e: React.FormEvent) => {
@@ -829,7 +870,12 @@ function TaskList({ instance, placedFn, onRemove, onAdd }: { instance: Instance;
   return (
     <div className="card overflow-hidden">
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
-        <span className="font-display text-base font-semibold">Tasks &amp; goals</span>
+        <span className="flex items-center gap-2">
+          <span className="font-display text-base font-semibold">Tasks &amp; goals</span>
+          {instance.tasks.length > 0 && (
+            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${overall >= 1 ? "bg-ok/15 text-ok" : "bg-accent/10 text-accent"}`}>{Math.round(overall * 100)}% done</span>
+          )}
+        </span>
         <button onClick={() => setOpen(!open)} className="text-sm font-medium text-accent">{open ? "Cancel" : "+ Add"}</button>
       </div>
       {open && (
@@ -849,26 +895,44 @@ function TaskList({ instance, placedFn, onRemove, onAdd }: { instance: Instance;
       <ul className="divide-y divide-line">
         {instance.tasks.map((t) => {
           const p = placedFn(t.id);
-          const ratio = Math.min(1, p / t.minutes);
+          const g = progress.get(t.id) ?? { done: 0, total: t.minutes, ratio: 0, complete: false };
+          const finished = g.ratio >= 1;
+          const scheduled = Math.min(1, p / t.minutes);
           const c = taskColor(instance, t.id);
           return (
             <li key={t.id} className="group px-4 py-2.5 text-sm">
               <div className="flex items-start gap-2.5">
-                <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: c }} aria-hidden />
+                <button
+                  type="button"
+                  onClick={() => onToggleComplete(t.id)}
+                  aria-pressed={finished}
+                  aria-label={finished ? `Mark ${t.title} not finished` : `Mark ${t.title} finished`}
+                  className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition hover:scale-110"
+                  style={{ borderColor: c, background: finished ? c : "transparent", color: "white" }}
+                >
+                  {finished && (
+                    <svg width="9" height="9" viewBox="0 0 10 10" fill="none" aria-hidden>
+                      <path d="M2 5.2l2 2L8 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </button>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate font-medium">{t.title}</span>
+                    <span className={`truncate font-medium ${finished ? "text-muted line-through" : ""}`}>{t.title}</span>
                     {t.plan?.length ? <span className="shrink-0 rounded bg-fixed px-1 text-[10px] text-muted">{t.plan.length} steps</span> : null}
                   </div>
                   <div className="text-xs text-muted">
                     {t.importance} · due {DAY_NAMES[t.dueDay]} {fmtTime(t.dueMin)}
+                    {p < t.minutes && !finished && <span className="text-warn"> · only {(p / 60).toFixed(1)}h fits</span>}
                   </div>
                   <div className="mt-1.5 flex items-center gap-2">
-                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-fixed">
-                      <div className="h-full rounded-full" style={{ width: `${ratio * 100}%`, background: ratio < 1 && p > 0 ? "var(--warn)" : c }} />
+                    <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-fixed" title={`${(g.done / 60).toFixed(1)}h done, ${(p / 60).toFixed(1)}h scheduled`}>
+                      {/* light: scheduled, solid: done */}
+                      <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${scheduled * 100}%`, background: `color-mix(in srgb, ${c} 25%, transparent)` }} />
+                      <div className="absolute inset-y-0 left-0 rounded-full transition-all duration-500" style={{ width: `${g.ratio * 100}%`, background: c }} />
                     </div>
-                    <span className={`text-[11px] tabular-nums ${ratio < 1 && p > 0 ? "text-warn" : "text-muted"}`}>
-                      {(p / 60).toFixed(1)}/{(t.minutes / 60).toFixed(1)}h
+                    <span className="text-[11px] tabular-nums text-muted">
+                      {(g.done / 60).toFixed(1)}/{(t.minutes / 60).toFixed(1)}h
                     </span>
                   </div>
                 </div>
@@ -882,36 +946,36 @@ function TaskList({ instance, placedFn, onRemove, onAdd }: { instance: Instance;
   );
 }
 
-function EggCard({ approved, finished, total, ratio }: { approved: boolean; finished: number; total: number; ratio: number }) {
+function EggCard({ hasGoals, finished, total, ratio, count, completeCount }: { hasGoals: boolean; finished: number; total: number; ratio: number; count: number; completeCount: number }) {
   const h = (m: number) => `${Math.round((m / 60) * 10) / 10}h`;
   const pct = Math.round(ratio * 100);
-  const stage = !approved
-    ? { title: "An egg is waiting", sub: "Approve a plan, then check off blocks as you finish them." }
+  const stage = !hasGoals
+    ? { title: "An egg is waiting", sub: "Add a task or goal. Finishing them hatches your dino." }
     : ratio >= 1
-      ? { title: "Your dino hatched!", sub: "Every planned block this week is done." }
+      ? { title: "Your dino hatched!", sub: "Every task and goal is done." }
       : ratio >= 0.75
-        ? { title: "Almost out!", sub: "The shell is breaking. Just a few more blocks." }
+        ? { title: "Almost out!", sub: "The shell is breaking. Just a little more." }
         : ratio >= 0.5
-          ? { title: "It's cracking", sub: "Halfway there. Keep checking off blocks." }
+          ? { title: "It's cracking", sub: "Halfway through your tasks and goals." }
           : ratio > 0
-            ? { title: "Something's moving", sub: "Each block you finish shakes it harder." }
-            : { title: "A quiet egg", sub: "Check off a block on the calendar to wake it up." };
+            ? { title: "Something's moving", sub: "Every bit you finish shakes it harder." }
+            : { title: "A quiet egg", sub: "Check off blocks or finish a goal to wake it up." };
   return (
     <div className="card flex items-center gap-4 p-4">
       <div className="shrink-0 rounded-2xl bg-bg p-1">
-        <DinoEgg progress={approved ? ratio : 0} size={96} />
+        <DinoEgg progress={hasGoals ? ratio : 0} size={96} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="font-display text-base font-semibold leading-tight">{stage.title}</div>
         <p className="mt-0.5 text-xs text-muted">{stage.sub}</p>
-        {approved && total > 0 && (
+        {hasGoals && total > 0 && (
           <>
             <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-line" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Week progress">
               <div className={`h-full rounded-full transition-all duration-500 ${ratio >= 1 ? "bg-ok" : "bg-accent"}`} style={{ width: `${pct}%` }} />
             </div>
             <div className="mt-1 flex justify-between text-[11px] font-semibold text-muted">
               <span>
-                {h(finished)} of {h(total)} done
+                {completeCount}/{count} goals · {h(finished)} of {h(total)}
               </span>
               <span>{pct}%</span>
             </div>

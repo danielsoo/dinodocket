@@ -3,7 +3,7 @@
 import { DAY_NAMES, type FixedEvent, type Instance, type Session } from "@/lib/engine/types";
 import { fmtTime } from "@/lib/engine/scheduler";
 import { addDays, sameDay } from "@/lib/dates";
-import { pieceKey } from "@/lib/progress";
+import { pieceKey, taskKey } from "@/lib/progress";
 
 const PX = 28; // pixels per 30 minutes (a 30-min block must fit one readable line)
 
@@ -163,7 +163,7 @@ export default function WeekCalendar({
                 const roomy = h >= 2 * PX;
                 const pieces = sessions.filter((x) => x.taskId === b.taskId && x.day === b.day && x.start >= b.start && x.end <= b.end);
                 const checkable = !proposed && !!onToggleDone;
-                const isDone = checkable && !!done && pieces.every((x) => done.has(pieceKey(x)));
+                const isDone = checkable && !!done && (done.has(taskKey(b.taskId)) || pieces.every((x) => done.has(pieceKey(x))));
                 return (
                   <div
                     role="button"
