@@ -81,13 +81,14 @@ export interface RoundInput {
   round: number;
   elites: Candidate[]; // best strategies so far, best first
   recent: { agent: string; mean: number; rationale: string }[]; // what was tried last round
+  agent?: number; // run only this agent (one serverless call per agent gets its own time budget)
 }
 
 // Limit simultaneous LLM calls: the shared hackathon endpoint returns 503 when overloaded.
 const LLM_CONCURRENCY = 2;
 const ROUND_BUDGET_MS = 110000; // the round route has maxDuration 120s
 
-export async function runRound({ round, elites, recent }: RoundInput): Promise<Candidate[]> {
+export async function runRound({ round, elites, recent, agent }: RoundInput): Promise<Candidate[]> {
   const train = trainSet();
   const best = elites[0];
   const useLlm = llmEnabled();
@@ -97,8 +98,9 @@ export async function runRound({ round, elites, recent }: RoundInput): Promise<C
   const acquire = () => new Promise<void>((res) => (active < LLM_CONCURRENCY ? (active++, res()) : queue.push(() => (active++, res()))));
   const release = () => { active--; queue.shift()?.(); };
 
+  const only = typeof agent === "number" && agent >= 0 && agent < AGENTS.length ? agent : undefined;
   return Promise.all(
-    AGENTS.map(async (a, i): Promise<Candidate> => {
+    AGENTS.map((a, i) => ({ a, i })).filter(({ i }) => only === undefined || i === only).map(async ({ a, i }): Promise<Candidate> => {
       let strategy: Strategy;
       let rationale = "";
       let source: Candidate["source"] = useLlm ? "llm" : "mock";

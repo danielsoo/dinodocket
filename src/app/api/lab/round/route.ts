@@ -11,6 +11,7 @@ export async function POST(req: Request) {
     round: Number(body.round) || 1,
     elites: body.elites.slice(0, 5),
     recent: Array.isArray(body.recent) ? body.recent.slice(0, 8) : [],
+    agent: typeof body.agent === "number" ? body.agent : undefined,
   });
   return Response.json({ candidates });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Candidate } from "@/lib/agents";
 
 type TestResult = { name: string; mean: number; feasibleRate: number; components: Record<string, number> };
@@ -21,6 +21,30 @@ export default function Lab() {
   const [status, setStatus] = useState("");
   const [running, setRunning] = useState(false);
   const [saved, setSaved] = useState("");
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+
+  // Restore the last finished (or partial) run so a good LLM run survives reloads and API outages.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("dinodocket.labRun");
+      if (!raw) return;
+      const r = JSON.parse(raw);
+      /* eslint-disable react-hooks/set-state-in-effect */
+      if (Array.isArray(r.all) && r.all.length) setAll(r.all);
+      if (r.meta) setMeta(r.meta);
+      if (r.test) setTest(r.test);
+      if (typeof r.rounds === "number") setRounds(r.rounds);
+      if (r.savedAt) setSavedAt(r.savedAt);
+      /* eslint-enable react-hooks/set-state-in-effect */
+    } catch {}
+  }, []);
+  const persist = (data: { all: Candidate[]; meta: unknown; test: unknown; rounds: number }) => {
+    const at = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    setSavedAt(at);
+    try {
+      localStorage.setItem("dinodocket.labRun", JSON.stringify({ ...data, savedAt: at }));
+    } catch {}
+  };
 
   const sorted = [...all].sort((a, b) => b.eval.mean - a.eval.mean);
   const best = sorted[0];
@@ -38,22 +62,42 @@ export default function Lab() {
       let pool: Candidate[] = [init.baseline];
       setAll(pool);
       let recent: { agent: string; mean: number; rationale: string }[] = [];
+      const metaNow = { mode: init.mode, model: init.model, trainSize: init.trainSize, db: init.db };
       for (let r = 1; r <= rounds; r++) {
-        setStatus(`Round ${r}/${rounds}: 4 agents proposing in parallel…`);
         const elites = [...pool].sort((a, b) => b.eval.mean - a.eval.mean).slice(0, 5);
-        const res = await fetch("/api/lab/round", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ round: r, elites, recent }) });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "round failed");
-        const cands = data.candidates as Candidate[];
-        pool = [...pool, ...cands];
+        const cands: Candidate[] = [];
+        let done = 0;
+        setStatus(`Round ${r}/${rounds}: agents proposing (0/4 back)…`);
+        // One request per agent so each gets its own time budget; 2 at a time to go easy on the shared API.
+        const queue = [0, 1, 2, 3];
+        const worker = async () => {
+          while (queue.length) {
+            const agent = queue.shift()!;
+            try {
+              const res = await fetch("/api/lab/round", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ round: r, elites, recent, agent }) });
+              const data = await res.json();
+              if (res.ok && Array.isArray(data.candidates)) {
+                cands.push(...data.candidates);
+                pool = [...pool, ...data.candidates];
+                setAll(pool);
+              }
+            } catch {
+              // a dropped request just means one fewer proposal this round
+            }
+            done++;
+            setStatus(`Round ${r}/${rounds}: agents proposing (${done}/4 back)…`);
+          }
+        };
+        await Promise.all([worker(), worker()]);
         recent = cands.map((c) => ({ agent: c.agent, mean: c.eval.mean, rationale: c.rationale }));
-        setAll(pool);
+        persist({ all: pool, meta: metaNow, test: null, rounds });
       }
       setStatus("Testing baseline and best strategy on held-out weeks…");
       const top = [...pool].sort((a, b) => b.eval.mean - a.eval.mean)[0];
       const t = await (await fetch("/api/lab/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ strategies: [pool[0].strategy, top.strategy] }) })).json();
       const testRes = { baseline: t.results[0], best: t.results[1], testSize: t.testSize };
       setTest(testRes);
+      persist({ all: pool, meta: metaNow, test: testRes, rounds });
       setStatus("Done.");
       if (init.db) {
         const s = await (await fetch("/api/lab/runs", {
@@ -134,6 +178,7 @@ export default function Lab() {
           })()}
           <span className="rounded-full border border-line bg-panel px-2.5 py-1">MongoDB {meta.db ? "on" : "off"}</span>
           {status && <span className="rounded-full border border-line bg-panel px-2.5 py-1 text-muted">{status}</span>}
+          {!running && savedAt && <span className="rounded-full border border-line bg-panel px-2.5 py-1 text-muted">Saved run from {savedAt}</span>}
         </div>
       )}
       {!meta && status && <p className="text-sm text-muted">{status}</p>}
