@@ -107,6 +107,33 @@ export default function Planner() {
   const [approved, setApproved] = useState<Schedule | null>(null);
   const [strategy, setStrategy] = useState<Strategy>(DEFAULT_STRATEGY);
   const [proposal, setProposal] = useState<Proposal | null>(null);
+  // Undo history: snapshots of the committed week (instance + approved plan) before each change.
+  const [history, setHistory] = useState<{ instance: Instance; approved: Schedule | null; label: string }[]>([]);
+  function snapshot(label: string) {
+    setHistory((h) => {
+      const last = h[h.length - 1];
+      if (last && last.instance === instance && last.approved === approved) return h; // same change, already saved
+      return [...h.slice(-29), { instance, approved, label }];
+    });
+  }
+  function undo() {
+    if (proposal) {
+      setProposal(null);
+      setMessages((m) => [...m, { role: "assistant", content: "Undone. I dropped that proposed change, so your plan is exactly as it was." }]);
+      return;
+    }
+    const last = history[history.length - 1];
+    if (!last) {
+      setMessages((m) => [...m, { role: "assistant", content: "There's nothing to undo yet." }]);
+      return;
+    }
+    setHistory((h) => h.slice(0, -1));
+    setInstance(last.instance);
+    setApproved(last.approved);
+    setSelected(null);
+    setEditEvent(null);
+    setMessages((m) => [...m, { role: "assistant", content: `Undone: ${last.label}. Your week is back to how it was before.` }]);
+  }
   const [messages, setMessages] = useState<Msg[]>([
     {
       role: "assistant",
@@ -223,6 +250,7 @@ export default function Planner() {
       const b = (data.schedule as Schedule).sessions.map(key);
       if (b.length === a.size && b.every((k) => a.has(k))) {
         // The user's edit didn't change the plan, so there is nothing to approve.
+        snapshot(label);
         setInstance(next);
         setApproved(data.schedule);
         return;
@@ -245,6 +273,12 @@ export default function Planner() {
     const text = (override ?? input).trim();
     if (!text || busy) return;
     if (!override) setInput("");
+    // Undo is instant and local: no need to ask the model.
+    if (/^\s*(?:can you |could you |please )?(?:undo|revert|go back|put (?:it|that) back|take (?:it|that) back)(?:\s+(?:it|that|this|the last change|please))*\s*[.!?]*\s*$|^\s*(?:방금\s*(?:거|것)?\s*)?(?:되돌려|되돌리|실행\s*취소|원래대로)/i.test(text)) {
+      setMessages((m) => [...m, { role: "user", content: text }]);
+      undo();
+      return;
+    }
     const history = messages.slice(-6);
     setMessages((m) => [...m, { role: "user", content: text }]);
     setBusy(true);
@@ -254,6 +288,7 @@ export default function Planner() {
           message: text,
           instance: base,
           history,
+          sessions: (proposal?.schedule ?? approved)?.sessions ?? [],
           persona: (() => {
             const a = loadAnswers();
             return a ? { profile: toProfile(a), role: a.role, year: a.year, peak: a.peak, workStyle: a.workStyle, commitments: a.commitments, goals: a.goals } : null;
@@ -271,7 +306,8 @@ export default function Planner() {
         }
         if (matched) await applyEdit(next, false, "Updated groups");
         else setMessages((m) => [...m, { role: "assistant", content: "I couldn't find those items on your calendar. Try the exact title, like \"THON committee\"." }]);
-      } else if (data.action && data.action.type !== "none") await propose(applyAction(base, data.action), data.reply);
+      } else if (data.action?.type === "undo") undo();
+      else if (data.action && data.action.type !== "none") await propose(applyAction(base, data.action), data.reply);
     } catch {
       setMessages((m) => [...m, { role: "assistant", content: "Something went wrong reaching the planner. Your schedule was not changed." }]);
     } finally {
@@ -287,6 +323,7 @@ export default function Planner() {
       await propose(inst, label);
       return;
     }
+    snapshot(label);
     setInstance(inst);
     if (approved && timingChanged) {
       // Drop approved work that now collides with a commitment, then offer a fresh plan.
@@ -341,6 +378,7 @@ export default function Planner() {
 
   function approve() {
     if (!proposal) return;
+    snapshot(proposal.label.length > 60 ? "the last approved change" : proposal.label);
     setInstance(proposal.instance);
     setApproved(proposal.schedule);
     setProposal(null);
@@ -353,6 +391,7 @@ export default function Planner() {
   function reset() {
     // Keep the user's personalized hours and limits when resetting the demo week.
     const answers = loadAnswers();
+    snapshot("Load sample week");
     setInstance(answers ? { ...DEMO, profile: toProfile(answers) } : DEMO);
     setApproved(null);
     setProposal(null);
@@ -455,6 +494,14 @@ export default function Planner() {
               </span>
             )}
             <span className="hidden text-xs text-muted sm:inline">Strategy: {strategy.name}</span>
+            <button
+              onClick={undo}
+              disabled={!proposal && !history.length}
+              title={proposal ? "Drop the proposed change" : history.length ? `Undo: ${history[history.length - 1].label}` : "Nothing to undo"}
+              className="rounded-xl px-3 py-2 text-sm font-semibold text-muted hover:bg-panel hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              ↶ Undo
+            </button>
             <button onClick={reset} className="rounded-xl px-3 py-2 text-sm font-semibold text-muted hover:bg-panel hover:text-ink">Sample week</button>
             <button onClick={generate} disabled={busy} className="btn-sticker rounded-xl bg-accent px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
               {approved ? "Re-plan week" : "Generate plan"}
@@ -646,7 +693,10 @@ export default function Planner() {
             const n = shownInst.fixed.filter((e) => e.title.trim().toLowerCase() === title.trim().toLowerCase()).length;
             setMessages((m) => [...m, { role: "assistant", content: `Locking "${title}"${n > 1 ? ` (all ${n} this week)` : ""} 🔒. It's top priority now, so I'll always plan around it.` }]);
             const next = applyAction(shownInst, { type: "update_event", title, locked: true });
-            if (!proposal && !approved) setInstance(next); // no plan yet: nothing to re-plan or approve
+            if (!proposal && !approved) {
+              snapshot(`Lock ${title}`);
+              setInstance(next); // no plan yet: nothing to re-plan or approve
+            }
             else propose(next, `Lock ${title}`, proposal ? undefined : approved?.sessions);
           }}
         />

@@ -13,6 +13,11 @@ export async function POST(req: Request) {
         .filter((m: { role?: string; content?: unknown }) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
         .slice(-6)
     : [];
-  const result = await interpret(message, sanitizeInstance(body?.instance), history, sanitizePersona(body?.persona));
+  const n = (x: unknown, lo: number, hi: number) => (typeof x === "number" && x >= lo && x <= hi ? x : null);
+  const sessions = (Array.isArray(body?.sessions) ? body.sessions : [])
+    .slice(0, 200)
+    .map((s: Record<string, unknown>) => ({ taskId: String(s?.taskId ?? ""), day: n(s?.day, 0, 6), start: n(s?.start, 0, 1440), end: n(s?.end, 0, 1440) }))
+    .filter((s: { day: number | null; start: number | null; end: number | null }) => s.day !== null && s.start !== null && s.end !== null && s.end > s.start);
+  const result = await interpret(message, sanitizeInstance(body?.instance), history, sanitizePersona(body?.persona), sessions);
   return Response.json(result);
 }

@@ -20,6 +20,7 @@ export interface ChatMsg {
 export interface ChatResult {
   text: string; // answer text to parse (content, or reasoning text if content is empty)
   diag: string; // short diagnostics for error messages
+  content: string; // the model's visible answer only (no reasoning)
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -74,7 +75,7 @@ export async function chat(
         const diag = `finish=${choice.finish_reason ?? "?"} content=${content.length}ch reasoning=${reasoning.length}ch head="${content.slice(0, 60).replace(/\s+/g, " ")}"`;
         // Prefer the answer; fall back to the reasoning text if the answer is empty or has no JSON.
         const text = content.includes("{") ? content : `${content}\n${reasoning}`;
-        return { text, diag, attempts: attempt, model };
+        return { text, diag, content, attempts: attempt, model };
       }
     } catch (e) {
       if (e instanceof LlmError) throw e;

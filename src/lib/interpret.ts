@@ -16,6 +16,7 @@ export type Action =
   | { type: "update_event"; title: string; start?: number; end?: number; days?: number[]; onlyDay?: number; atStart?: number; newTitle?: string; link?: string; location?: string; locked?: boolean }
   | { type: "remove_event"; title: string; onlyDay?: number; atStart?: number }
   | { type: "add_event"; title: string; day: number; start: number; end: number; meeting?: boolean; link?: string; location?: string; days?: number[]; locked?: boolean }
+  | { type: "undo" }
   | { type: "none" };
 
 export interface Interpretation {
@@ -131,6 +132,8 @@ export function validateAction(raw: unknown, inst: Instance): Action | null {
       if (s === undefined && e === undefined && !days.length && !link && !location && !newTitle && locked === undefined) return null;
       return { type: "update_event", title, start: s, end: e, days: days.length ? [...new Set(days)] : undefined, onlyDay, atStart, newTitle, link, location, locked };
     }
+    case "undo":
+      return { type: "undo" };
     case "none":
       return { type: "none" };
     default:
@@ -138,10 +141,33 @@ export function validateAction(raw: unknown, inst: Instance): Action | null {
   }
 }
 
-function summarize(inst: Instance) {
+export interface PlannedSession { taskId: string; day: number; start: number; end: number }
+
+/** Awake gaps of at least 1 hour that hold no commitment and no planned work. */
+export function freeWindows(inst: Instance, sessions: PlannedSession[] = []) {
+  const out: string[] = [];
+  for (let d = 0; d < 7; d++) {
+    const busy = [...inst.fixed.filter((e) => e.day === d), ...sessions.filter((s) => s.day === d)]
+      .map((b) => [b.start, b.end] as const)
+      .sort((a, b) => a[0] - b[0]);
+    let cur = inst.profile.wake;
+    const gaps: string[] = [];
+    for (const [s, e] of [...busy, [inst.profile.sleep, inst.profile.sleep] as const]) {
+      if (s - cur >= 60) gaps.push(`${fmtTime(cur)}-${fmtTime(Math.min(s, inst.profile.sleep))}`);
+      cur = Math.max(cur, e);
+      if (cur >= inst.profile.sleep) break;
+    }
+    out.push(`- ${DAY_NAMES[d]}: ${gaps.join(", ") || "no free hour"}`);
+  }
+  return out.join("\n");
+}
+
+function summarize(inst: Instance, sessions: PlannedSession[] = []) {
   const tasks = inst.tasks.map((t) => `- ${t.id}: "${t.title}" ${(t.minutes / 60).toFixed(1)}h, due ${DAY_NAMES[t.dueDay]} ${fmtTime(t.dueMin)}, ${t.importance}, group ${taskGroup(t)}${t.plan?.length ? `, has ${t.plan.length} steps` : ""}`).join("\n");
   const ev = inst.fixed.map((e) => `- "${e.title}" ${DAY_NAMES[e.day]} ${fmtTime(e.start)}-${fmtTime(e.end)} (${e.locked === false ? "not locked" : "LOCKED"}, group ${eventGroup(e)})`).join("\n");
-  return `Groups: ${allGroups(inst).join(", ")}\nTasks:\n${tasks || "- none"}\nFixed events:\n${ev || "- none"}`;
+  const title = (id: string) => inst.tasks.find((t) => t.id === id)?.title ?? "work";
+  const planned = sessions.slice(0, 60).map((s) => `- ${DAY_NAMES[s.day]} ${fmtTime(s.start)}-${fmtTime(s.end)}: ${title(s.taskId)}`).join("\n");
+  return `Groups: ${allGroups(inst).join(", ")}\nAwake: ${fmtTime(inst.profile.wake)} to ${fmtTime(inst.profile.sleep)}\nTasks:\n${tasks || "- none"}\nFixed events:\n${ev || "- none"}\nPlanned work sessions:\n${planned || "- none (no plan generated yet)"}\nFree time (awake, at least 1h, nothing booked):\n${freeWindows(inst, sessions)}`;
 }
 
 const SYSTEM = `You are the planning assistant inside a student scheduler called DinoDocket.
@@ -164,7 +190,9 @@ Allowed actions (JSON):
 {"type":"remove_event","title":str,"onlyDay"?:"Tue","atStart"?:"09:00"}   // delete a fixed event: all occurrences, or just one day / one start time
    // If it's unclear whether the student means every occurrence or just one day, use {"type":"none"} and ask.
 {"type":"set_group","group":str,"titles":[str],"assignments"?:[{"group":str,"titles":[str]}]}   // use "assignments" to apply several groups in one go   // put events/tasks into a group for weekly stats; use exact titles from the calendar; a new group name is created automatically; keep the group name in the language the student used
-{"type":"none"}
+{"type":"undo"}   // the student wants to undo / revert / take back the last change ("undo", "put that back", "되돌려줘")
+{"type":"none"}   // for questions and conversation: answer in "reply"
+QUESTIONS: if the student asks something (when to fit an activity, how busy a day is, what to do first), ANSWER it concretely in "reply" using the Free time and Planned work lists below, with action {"type":"none"}. Name specific days and times (e.g. "Tue 4 PM to 6 PM or Sat 9 AM to 12 PM are open"), and offer to add it ("Want me to block Tue 4 to 6 PM for tennis?"). If they then say yes, use add_event.
 LOCKING (priority): a LOCKED event is top priority; the engine never plans anything over it. A NOT LOCKED event is normally avoided too, but if essential/high work can't fit anywhere else, the engine may use its time.
 - If the student says something can't be missed, is non-negotiable, is very important, or asks to lock/protect/pin it (e.g. "I never miss church", "this class is mandatory", "lock my shift", "don't ever schedule over X"), set "locked":true (add_event for a new event, update_event with only "locked":true for an existing one). Say in the reply that you'll lock it and that it becomes top priority; the student approves the change, which is the confirmation.
 - If the student adds something that sounds important (a class, a work shift, a religious service, an appointment, an exam) but didn't say it can't be missed, add it without "locked" and END the reply with a short question like "Want me to lock it so nothing ever gets planned over it?".
@@ -175,8 +203,16 @@ Write times in replies like "12 PM to 1 PM" (12-hour, never "13:00 PM"). Don't u
 Reply with ONE JSON object: {"reply": "<short friendly message to the student>", "action": <action>}.`;
 
 /** Rule-based fallback so the demo works without an API key. */
-function rules(msg: string, inst: Instance): Interpretation {
+function rules(msg: string, inst: Instance, llmDown = false, sessions: PlannedSession[] = []): Interpretation {
   const m = msg.toLowerCase();
+  if (/^\s*(?:can you |could you |please )?(?:undo|revert|put (?:it|that) back|take (?:it|that) back)\b|되돌려|되돌리|실행\s*취소|원래대로/.test(m))
+    return { reply: "Undoing the last change.", action: { type: "undo" }, source: "rules" };
+  // A "when should I..." question: answer from free time instead of a canned hint.
+  if (/\b(when|what time|best time|free)\b|언제|시간/.test(m) && /\?|when|언제/.test(m)) {
+    const free = freeWindows(inst, sessions).split("\n").filter((l) => !l.includes("no free hour")).slice(0, 4);
+    if (free.length)
+      return { reply: `Here's when you're free this week (at least an hour, nothing booked):\n${free.join("\n")}\nTell me which slot and I'll block it, e.g. "Block Tue 4pm-6pm for tennis".`, action: { type: "none" }, source: "rules" };
+  }
   const hours = m.match(/(\d+(?:\.\d+)?)\s*(?:hours|hour|hrs|hr|h)\b/);
   const dayIdx = DAY_NAMES.findIndex((d) => new RegExp(`\\b${d.toLowerCase()}`).test(m));
   const time = m.match(/\b(?:at|by)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/);
@@ -226,7 +262,9 @@ function rules(msg: string, inst: Instance): Interpretation {
   if (dayIdx >= 0 && !hours)
     return { reply: "Got it. About how many hours will it take? (e.g. \"about 4 hours\")", action: { type: "none" }, source: "rules" };
   return {
-    reply: 'Tell me about a new task with its hours and due day, like "I have a CMPSC lab report due Wednesday, about 4 hours", or block time like "I\'m busy Tue 6pm-9pm".',
+    reply: llmDown
+      ? "The AI model is busy right now, so I couldn't understand that one. Please try again in a few seconds. Simple changes still work, like \"lab report due Wed, 4 hours\" or \"I'm busy Tue 6pm-9pm\"."
+      : 'Tell me about a new task with its hours and due day, like "I have a CMPSC lab report due Wednesday, about 4 hours", or block time like "I\'m busy Tue 6pm-9pm".',
     action: { type: "none" },
     source: "rules",
   };
@@ -237,25 +275,37 @@ export async function interpret(
   inst: Instance,
   history: { role: "user" | "assistant"; content: string }[] = [],
   persona: Persona | null = null,
+  sessions: PlannedSession[] = [],
 ): Promise<Interpretation> {
-  if (!llmEnabled()) return rules(message, inst);
+  if (!llmEnabled()) return rules(message, inst, false, sessions);
+  let res: Awaited<ReturnType<typeof chat>>;
   try {
-    const { text, diag } = await chat(
+    res = await chat(
       [
-        { role: "system", content: `${SYSTEM}${persona ? `\n\nAbout this student (from their sign-up answers; use it to tailor estimates, timing and advice): ${personaText(persona)}` : ""}\n\nCurrent week:\n${summarize(inst)}` },
+        { role: "system", content: `${SYSTEM}${persona ? `\n\nAbout this student (from their sign-up answers; use it to tailor estimates, timing and advice): ${personaText(persona)}` : ""}\n\nCurrent week:\n${summarize(inst, sessions)}` },
         ...history.slice(-6),
         { role: "user", content: message },
       ],
-      { temperature: 0.2, budgetMs: 45000 },
+      { temperature: 0.2, budgetMs: 80000 },
     );
-    const json = extractJson(text, ["action", "reply"], diag) as { reply?: string; action?: unknown };
-    let action = validateAction(json.action, inst);
-    // If Dino says it's locking a new event but forgot the flag, trust what it told the student.
-    if (action?.type === "add_event" && !action.locked && /\block(ed|ing)?\b|🔒/i.test(String(json.reply ?? "")) && !/\?\s*$/.test(String(json.reply ?? "").trim()))
-      action = { ...action, locked: true };
-    if (!action) return { reply: String(json.reply ?? "I couldn't turn that into a change. Could you rephrase?"), action: { type: "none" }, source: "llm" };
-    return { reply: String(json.reply ?? "Here's the proposed change."), action, source: "llm" };
   } catch {
-    return rules(message, inst);
+    // The shared model is overloaded or timed out: handle what simple rules can, and say so honestly otherwise.
+    return rules(message, inst, true, sessions);
   }
+  const { text, diag, content } = res;
+  let json: { reply?: string; action?: unknown };
+  try {
+    json = extractJson(text, ["action", "reply"], diag) as { reply?: string; action?: unknown };
+  } catch {
+    // The model answered in plain text (common for questions). Show that answer instead of discarding it.
+    const plain = content.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").trim();
+    if (plain) return { reply: plain.slice(0, 1500), action: { type: "none" }, source: "llm" };
+    return rules(message, inst, true, sessions);
+  }
+  let action = validateAction(json.action, inst);
+  // If Dino says it's locking a new event but forgot the flag, trust what it told the student.
+  if (action?.type === "add_event" && !action.locked && /\block(ed|ing)?\b|🔒/i.test(String(json.reply ?? "")) && !/\?\s*$/.test(String(json.reply ?? "").trim()))
+    action = { ...action, locked: true };
+  if (!action) return { reply: String(json.reply ?? "I couldn't turn that into a change. Could you rephrase?"), action: { type: "none" }, source: "llm" };
+  return { reply: String(json.reply ?? "Here's the proposed change."), action, source: "llm" };
 }
