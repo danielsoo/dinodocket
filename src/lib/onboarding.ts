@@ -4,14 +4,14 @@
 
 import type { Instance, Profile, Strategy } from "./engine/types";
 
-export type Role = "undergrad" | "grad" | "working-student" | "professional";
+export type Role = "undergrad" | "grad" | "working-student" | "professional" | "freelance" | "other";
 export type Year = "freshman" | "sophomore" | "junior" | "senior" | "masters" | "phd" | "na";
 export type Peak = "morning" | "afternoon" | "evening" | "night";
 export type WorkStyle = "last-minute" | "mix" | "early";
 export type Nudge = "minimal" | "balanced" | "high";
 
 export interface Answers {
-  role: Role;
+  role: Role | null; // null until the person picks one; nothing is assumed
   year: Year;
   wake: number; // minutes from midnight
   sleep: number; // minutes from midnight, 1440 = midnight or later
@@ -25,8 +25,8 @@ export interface Answers {
 }
 
 export const DEFAULT_ANSWERS: Answers = {
-  role: "undergrad",
-  year: "junior",
+  role: null,
+  year: "na",
   wake: 8 * 60,
   sleep: 24 * 60,
   peak: "afternoon",
@@ -39,11 +39,31 @@ export const DEFAULT_ANSWERS: Answers = {
 };
 
 export const ROLES: { v: Role; label: string; hint: string }[] = [
-  { v: "undergrad", label: "Undergrad", hint: "Classes, homework, exams" },
+  { v: "undergrad", label: "College student", hint: "Classes, homework, exams" },
   { v: "grad", label: "Grad student", hint: "Research, TA, coursework" },
-  { v: "working-student", label: "Working + studying", hint: "Shifts around classes" },
-  { v: "professional", label: "Working full time", hint: "Meetings and side goals" },
+  { v: "working-student", label: "Working + studying", hint: "Shifts or a job around classes" },
+  { v: "professional", label: "Working full time", hint: "Job, meetings, side goals" },
+  { v: "freelance", label: "Freelance / self-employed", hint: "Clients and your own hours" },
+  { v: "other", label: "Something else", hint: "Job hunting, parenting, gap year…" },
 ];
+
+export const isStudent = (r: Role | null) => r === "undergrad" || r === "grad" || r === "working-student";
+
+/** Wording and pick-lists that change depending on who is answering. */
+export function copyFor(r: Role | null) {
+  const student = isStudent(r);
+  return {
+    daily: student ? "How much schoolwork per day still feels okay?" : "Outside fixed commitments, how much focused work per day feels okay?",
+    start: student ? "When do you usually start assignments?" : "When do you usually start things that have a deadline?",
+    goalsLabel: student ? "Goals for this semester" : "Goals right now",
+    commitments: student
+      ? ["Part-time job", "Club / org", "Athletics", "Research", "TA / tutoring", "Caregiving"]
+      : ["Commute", "Kids / family", "Caregiving", "Gym / sports", "Classes or courses", "Volunteering"],
+    goals: student
+      ? ["Keep my GPA up", "Land an internship", "Exercise regularly", "Sleep more", "Side project", "Less stress"]
+      : ["Grow at work", "Find a new job", "Exercise regularly", "Sleep more", "Side project", "Learn a new skill", "Less stress"],
+  };
+}
 
 export const YEARS: { v: Year; label: string; roles: Role[] }[] = [
   { v: "freshman", label: "1st year", roles: ["undergrad", "working-student"] },
@@ -81,8 +101,6 @@ export const STYLES: { v: WorkStyle; label: string; hint: string }[] = [
   { v: "early", label: "Way ahead of time", hint: "Dino keeps big buffers" },
 ];
 
-export const COMMITMENTS = ["Part-time job", "Club / org", "Athletics", "Research", "TA / tutoring", "Caregiving"];
-export const GOALS = ["Keep my GPA up", "Land an internship", "Exercise regularly", "Sleep more", "Side project", "Less stress"];
 
 export const NUDGES: { v: Nudge; label: string; hint: string }[] = [
   { v: "minimal", label: "Only when it matters", hint: "Conflicts and missed deadlines" },

@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { useDemoUser } from "@/lib/auth";
 import { DEMO, DEFAULT_STRATEGY } from "@/lib/demo";
 import {
-  COMMITMENTS, DAILY, DEFAULT_ANSWERS, GOALS, NUDGES, PEAKS, ROLES, SESSIONS, SLEEP_OPTIONS, STYLES, WAKE_OPTIONS, YEARS,
-  applyAnswers, loadAnswers, summary, timeLabel, toProfile, type Answers,
+  DAILY, DEFAULT_ANSWERS, NUDGES, PEAKS, ROLES, SESSIONS, SLEEP_OPTIONS, STYLES, WAKE_OPTIONS, YEARS,
+  applyAnswers, copyFor, loadAnswers, summary, timeLabel, toProfile, type Answers,
 } from "@/lib/onboarding";
 
 const STEPS = [
@@ -75,7 +75,8 @@ export default function Onboarding() {
 
   const done = step >= STEPS.length;
   const name = user?.name ?? "";
-  const years = YEARS.filter((y) => y.roles.includes(a.role));
+  const years = a.role ? YEARS.filter((y) => y.roles.includes(a.role!)) : [];
+  const copy = copyFor(a.role);
   const p = toProfile(a);
 
   const go = (d: number) => {
@@ -131,14 +132,22 @@ export default function Onboarding() {
                             hint={r.hint}
                             onClick={() => {
                               const ys = YEARS.filter((y) => y.roles.includes(r.v));
-                              setA((x) => ({ ...x, role: r.v, year: ys.some((y) => y.v === x.year) ? x.year : ys[0]?.v ?? "na" }));
+                              const c = copyFor(r.v);
+                              setA((x) => ({
+                                ...x,
+                                role: r.v,
+                                year: ys.some((y) => y.v === x.year) ? x.year : "na",
+                                // drop picks that don't exist for the new role
+                                commitments: x.commitments.filter((v) => c.commitments.includes(v)),
+                                goals: x.goals.filter((v) => c.goals.includes(v)),
+                              }));
                             }}
                           />
                         ))}
                       </div>
                     </Q>
                     {years.length > 0 && (
-                      <Q label="What year are you in?">
+                      <Q label="What year are you in? (optional)">
                         <div className="flex flex-wrap gap-2">
                           {years.map((y) => (
                             <Pill key={y.v} on={a.year === y.v} onClick={() => set("year", y.v)}>
@@ -190,14 +199,14 @@ export default function Onboarding() {
                         ))}
                       </div>
                     </Q>
-                    <Q label="How much schoolwork per day still feels okay?">
+                    <Q label={copy.daily}>
                       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
                         {DAILY.map((d) => (
                           <Choice key={d.v} on={a.dailyHours === d.v} onClick={() => set("dailyHours", d.v)} label={d.label} hint={d.hint} />
                         ))}
                       </div>
                     </Q>
-                    <Q label="When do you usually start assignments?">
+                    <Q label={copy.start}>
                       <div className="grid gap-2.5 sm:grid-cols-3">
                         {STYLES.map((s) => (
                           <Choice key={s.v} on={a.workStyle === s.v} onClick={() => set("workStyle", s.v)} label={s.label} hint={s.hint} />
@@ -211,16 +220,16 @@ export default function Onboarding() {
                   <>
                     <Q label="Regular commitments">
                       <div className="flex flex-wrap gap-2">
-                        {COMMITMENTS.map((c) => (
+                        {copy.commitments.map((c) => (
                           <Pill key={c} on={a.commitments.includes(c)} onClick={() => toggle("commitments", c)}>
                             {c}
                           </Pill>
                         ))}
                       </div>
                     </Q>
-                    <Q label="Goals for this semester">
+                    <Q label={copy.goalsLabel}>
                       <div className="flex flex-wrap gap-2">
-                        {GOALS.map((g) => (
+                        {copy.goals.map((g) => (
                           <Pill key={g} on={a.goals.includes(g)} onClick={() => toggle("goals", g)}>
                             {g}
                           </Pill>
@@ -284,7 +293,13 @@ export default function Onboarding() {
               Open my planner
             </button>
           ) : (
-            <button type="button" onClick={() => go(1)} className="btn-sticker rounded-xl bg-accent px-5 py-2.5 text-sm font-bold text-white">
+            <button
+              type="button"
+              onClick={() => go(1)}
+              disabled={step === 0 && !a.role}
+              title={step === 0 && !a.role ? "Pick the one that sounds most like you" : undefined}
+              className="btn-sticker rounded-xl bg-accent px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
               {step === STEPS.length - 1 ? "See my setup" : "Continue"}
             </button>
           )}

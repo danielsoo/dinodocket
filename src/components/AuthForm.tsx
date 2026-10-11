@@ -26,7 +26,7 @@ const COPY: Record<Mode, { title: string; sub: string; cta: string; busy: string
   },
   signup: {
     title: "Create your account",
-    sub: "Your AI chief of staff for classes, deadlines and everything in between.",
+    sub: "Your AI chief of staff for deadlines, plans and everything in between.",
     cta: "Create account",
     busy: "Creating account…",
     swapText: "Already have an account?",
@@ -124,12 +124,12 @@ export default function AuthForm({ mode }: { mode: Mode }) {
           {mode === "signup" && (
             <div>
               <label htmlFor="name" className={label}>Name</label>
-              <input id="name" autoComplete="name" className={input} value={name} onChange={(e) => setName(e.target.value)} placeholder="Nittany Lion" />
+              <input id="name" autoComplete="name" className={input} value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
             </div>
           )}
           <div>
-            <label htmlFor="email" className={label}>{mode === "signup" ? "School email" : "Email"}</label>
-            <input id="email" type="email" inputMode="email" autoComplete="email" className={input} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="abc1234@psu.edu" />
+            <label htmlFor="email" className={label}>Email</label>
+            <input id="email" type="email" inputMode="email" autoComplete="email" className={input} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
           </div>
           <div>
             <div className="flex items-baseline justify-between">

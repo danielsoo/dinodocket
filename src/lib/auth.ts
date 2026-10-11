@@ -21,11 +21,11 @@ function read(): string | null {
 
 function nameFromEmail(email: string) {
   const local = email.split("@")[0]?.trim();
-  return local ? local.charAt(0).toUpperCase() + local.slice(1) : "Student";
+  return local ? local.charAt(0).toUpperCase() + local.slice(1) : "Guest";
 }
 
 export function demoLogin(email: string, name?: string) {
-  const cleanEmail = email.trim() || "student@psu.edu";
+  const cleanEmail = email.trim() || "guest@dinodocket.app";
   const user: DemoUser = { email: cleanEmail, name: name?.trim() || nameFromEmail(cleanEmail) };
   try {
     localStorage.setItem(KEY, JSON.stringify(user));
