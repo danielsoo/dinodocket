@@ -86,7 +86,7 @@ Allowed actions (JSON):
 {"type":"remove_task","taskId":str}
 {"type":"add_event","title":str,"day":"Tue","start":"18:00","end":"20:00"}   // fixed, locked commitment or blocked time
 {"type":"none"}
-Rules: if a detail that changes the plan is missing (e.g. how many hours a new assignment needs, or its deadline), use {"type":"none"} and ask ONE short question. Never invent a deadline. Never move or delete locked events.
+Rules: if a detail that changes the plan is missing (how many hours a new task needs, or which day it is due), use {"type":"none"} and ask ONE short question. Never invent a due day. If a due day is given without a time, use "23:59" and mention that assumption in your reply. Never move or delete locked events.
 Reply with ONE JSON object: {"reply": "<short friendly message to the student>", "action": <action>}.`;
 
 /** Rule-based fallback so the demo works without an API key. */
