@@ -8,7 +8,7 @@ import { MONTHS_SHORT, defaultPlanWeek, fromIso, toIso } from "@/lib/dates";
 import SessionDetail from "@/components/SessionDetail";
 import DinoEgg from "@/components/DinoEgg";
 import { blockPieces, goalProgress, pieceKey, taskKey } from "@/lib/progress";
-import { EventEditor } from "@/components/Editors";
+import { Drawer, EventEditor, TaskEditor } from "@/components/Editors";
 import { SWATCHES, addGroup, allGroups, assignGroup, awakeMinutes, deleteGroup, freeColor, renameGroup, setGroupColor, weekStats } from "@/lib/groups";
 import { DEMO, DEFAULT_STRATEGY } from "@/lib/demo";
 import { loadAnswers, summary, toProfile } from "@/lib/onboarding";
@@ -145,6 +145,7 @@ export default function Planner() {
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState<Session | null>(null);
+  const [editTask, setEditTask] = useState<Task | null>(null);
   const [editEvent, setEditEvent] = useState<{ event: FixedEvent; isNew: boolean } | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
   const [planWeek, setPlanWeek] = useState<Date | null>(null); // Monday the template week is pinned to
@@ -766,7 +767,28 @@ export default function Planner() {
           progress={progress.per}
           overall={progress.ratio}
           onToggleComplete={toggleTaskComplete}
+          onEdit={setEditTask}
+          onQuickChange={(t) => saveTask(t)}
         />
+        {editTask && (
+          <Drawer title="Edit task" accent={taskColor(shownInst, editTask.id)} onClose={() => setEditTask(null)}>
+            <div className="p-5">
+              <TaskEditor
+                key={editTask.id}
+                instance={shownInst}
+                task={editTask}
+                onSave={(t) => {
+                  setEditTask(null);
+                  saveTask(t);
+                }}
+                onDelete={(id) => {
+                  setEditTask(null);
+                  deleteTask(id);
+                }}
+              />
+            </div>
+          </Drawer>
+        )}
       </aside>
     </div>
   );
@@ -969,7 +991,11 @@ function TaskList({
   progress,
   overall,
   onToggleComplete,
+  onEdit,
+  onQuickChange,
 }: {
+  onEdit: (t: Task) => void;
+  onQuickChange: (t: Task) => void;
   instance: Instance;
   placedFn: (id: string) => number;
   onRemove: (id: string) => void;
@@ -1039,11 +1065,22 @@ function TaskList({
                 </button>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className={`truncate font-medium ${finished ? "text-muted line-through" : ""}`}>{t.title}</span>
+                    <button type="button" onClick={() => onEdit(t)} title="Edit hours, due date, importance" className={`truncate text-left font-medium hover:text-accent hover:underline ${finished ? "text-muted line-through" : ""}`}>{t.title}</button>
                     {t.plan?.length ? <span className="shrink-0 rounded bg-fixed px-1 text-[10px] text-muted">{t.plan.length} steps</span> : null}
                   </div>
-                  <div className="text-xs text-muted">
-                    {t.importance} · due {DAY_NAMES[t.dueDay]} {fmtTime(t.dueMin)}
+                  <div className="flex flex-wrap items-center gap-x-1 text-xs text-muted">
+                    <select
+                      aria-label={`Importance of ${t.title}`}
+                      value={t.importance}
+                      onChange={(e) => onQuickChange({ ...t, importance: e.target.value as Importance })}
+                      className="-ml-1 cursor-pointer rounded-md bg-transparent px-1 py-0.5 font-semibold text-ink hover:bg-fixed"
+                    >
+                      {["essential", "high", "normal", "flexible"].map((i) => <option key={i}>{i}</option>)}
+                    </select>
+                    ·
+                    <button type="button" onClick={() => onEdit(t)} className="rounded-md px-1 py-0.5 hover:bg-fixed hover:text-ink" title="Change hours or due date">
+                      {(t.minutes / 60).toFixed(t.minutes % 60 ? 1 : 0)}h · due {DAY_NAMES[t.dueDay]} {fmtTime(t.dueMin)} ✎
+                    </button>
                     {p < t.minutes && !finished && <span className="text-warn"> · only {(p / 60).toFixed(1)}h fits</span>}
                   </div>
                   <div className="mt-1.5 flex items-center gap-2">
@@ -1057,7 +1094,10 @@ function TaskList({
                     </span>
                   </div>
                 </div>
-                <button onClick={() => onRemove(t.id)} className="text-xs text-muted opacity-60 hover:text-warn group-hover:opacity-100" aria-label={`Remove ${t.title}`}>Remove</button>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <button onClick={() => onEdit(t)} className="text-xs font-semibold text-accent opacity-80 hover:underline group-hover:opacity-100" aria-label={`Edit ${t.title}`}>Edit</button>
+                  <button onClick={() => onRemove(t.id)} className="text-xs text-muted opacity-60 hover:text-warn group-hover:opacity-100" aria-label={`Remove ${t.title}`}>Remove</button>
+                </div>
               </div>
             </li>
           );
